@@ -104,48 +104,8 @@ int main(int argc, char *argv[]) {
     _aligned_free(bouncyBase);
     return 0;
 }
-/*
-// run test and gather timing data using the specified thread function
-TimerResult TimeThreads(unsigned int processor1,
-                  unsigned int processor2,
-                  uint64_t iter, 
-                  LatencyData lat1, 
-                  LatencyData lat2,
-                  DWORD (*threadFunc)(LPVOID)) {
-    TimerStructure timer;
-    TimerResult timer_result;
-    HANDLE testThreads[2];
-    DWORD tid1, tid2;
 
-    testThreads[0] = CreateThread(NULL, 0, threadFunc, &lat1, CREATE_SUSPENDED, &tid1);
-    testThreads[1] = CreateThread(NULL, 0, threadFunc, &lat2, CREATE_SUSPENDED, &tid2);
 
-    if (testThreads[0] == NULL || testThreads[1] == NULL) {
-        fprintf(stderr, "Failed to create test threads\n");
-        // Need better way to do this but for now:
-        timer_result.per_iter_ns = -1;
-        return timer_result;
-    }
-
-    SetThreadAffinityMask(testThreads[0], 1ULL << (uint64_t)processor1);
-    SetThreadAffinityMask(testThreads[1], 1ULL << (uint64_t)processor2);
-
-    common_timer_start(&timer);
-    ResumeThread(testThreads[0]);
-    ResumeThread(testThreads[1]);
-    WaitForMultipleObjects(2, testThreads, TRUE, INFINITE);
-    
-    // each thread does interlocked compare and exchange iterations times. We multipy iter count by 2 to get overall count of locked ops
-    common_timer_end(&timer, &timer_result, iter*2);
-
-    fprintf(stderr, "%d to %d: %f ns\n", processor1, processor2, timer_result.per_iter_ns*2); //Lat Multiplied by 2 to get previous behavior
-
-    CloseHandle(testThreads[0]);
-    CloseHandle(testThreads[1]);
-
-    return timer_result;
-}
-*/
 /// <summary>
 /// Measures latency from one logical processor core to another
 /// </summary>
@@ -225,10 +185,12 @@ int *LatencyTestThread(void *param) {
 int *ReadLatencyTestThread(void *param) {
     LatencyData* latencyData = (LatencyData*)param;
     uint64_t current = latencyData->start;
-    uint64_t startTsc = __rdtsc();
+    //uint64_t startTsc = __rdtsc();
+    volatile uint64_t* read_target = latencyData->readTarget; // needs to be volatile otherwise gcc optimizes it out
+    volatile uint64_t* write_target = latencyData->target;
     while (current <= 2 * latencyData->iterations) {
-        if (*(latencyData->readTarget) == current - 1) {
-            *(latencyData->target) = current;
+        if (*read_target == current - 1) {
+            *(write_target) = current;
             current += 2;
             _mm_sfence(); //TODO: replace with some more generic operation, maybe using C's stdatomics
         }

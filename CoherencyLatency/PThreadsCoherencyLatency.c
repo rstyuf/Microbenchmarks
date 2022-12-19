@@ -220,22 +220,14 @@ TimerResult RunOwnedTest(unsigned int processor1, unsigned int processor2, uint6
 /// <returns>next value that would have been written to shared memory</returns>
 int *LatencyTestThread(void *param) {
     LatencyData *latencyData = (LatencyData *)param;
-    //cpu_set_t cpuset;
     uint64_t current = latencyData->start;
-
-    //CPU_ZERO(&cpuset);
-    //CPU_SET(latencyData->processorIndex, &cpuset);
-    //sched_setaffinity(gettid(), sizeof(cpu_set_t), &cpuset);
-    //fprintf(stderr, "thread %ld set affinity %d\n", gettid(), latencyData->processorIndex);
-
     while (current <= 2 * latencyData->iterations) {
         if (__sync_bool_compare_and_swap(latencyData->target, current - 1, current)) { //TODO: replace with some more generic operation, maybe using C's stdatomics
             current += 2;
         }
     }
 
-    //pthread_exit(NULL);
-	return current;
+    return current;
 }
 
 /// <summary>
@@ -245,22 +237,13 @@ int *LatencyTestThread(void *param) {
 /// <param name="param">Latency test params</param>
 /// <returns>next value that would have been written to owned mem</returns>
 int *ReadLatencyTestThread(void *param) {
-    LatencyData *latencyData = (LatencyData *)param;
-    //cpu_set_t cpuset;
+    LatencyData* latencyData = (LatencyData*)param;
     uint64_t current = latencyData->start;
     //uint64_t startTsc = __rdtsc();
-    volatile uint64_t* read_target = latencyData->readTarget;
+    volatile uint64_t* read_target = latencyData->readTarget; // needs to be volatile otherwise gcc optimizes it out
     volatile uint64_t* write_target = latencyData->target;
-    //CPU_ZERO(&cpuset);
-    //CPU_SET(latencyData->processorIndex, &cpuset);
-    //sched_setaffinity(gettid(), sizeof(cpu_set_t), &cpuset);
-    //fprintf(stderr, "thread %ld set affinity %d\n", gettid(), latencyData->processorIndex);
-
     while (current <= 2 * latencyData->iterations) {
-        //fprintf(stderr, "InWhile: thread %ld -- cur=%d , rt=%d , wt=%d =  \n", gettid(), current, *(latencyData->readTarget), *(latencyData->target));
-        if (/*(*(latencyData->readTarget)*/ *read_target == current - 1) {
-            //fprintf(stderr, "InIf: thread %ld -- cur=%d , rt=%d , wt=%d =  \n", gettid(), current, *(latencyData->readTarget), *(latencyData->target));
-            //*(latencyData->target) = current;
+        if (*read_target == current - 1) {
             *(write_target) = current;
             current += 2;
             //	_mm_sfence();
@@ -268,6 +251,5 @@ int *ReadLatencyTestThread(void *param) {
         }
     }
 
-    //pthread_exit(NULL);
-	return current;
+    return current;
 }

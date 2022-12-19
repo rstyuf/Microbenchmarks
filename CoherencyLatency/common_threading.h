@@ -44,6 +44,7 @@ void* ThreadFunctionRunner(void* param){
     CPU_ZERO(&cpuset);
     CPU_SET(arg_holder->coreIdx, &cpuset);
     sched_setaffinity(gettid(), sizeof(cpu_set_t), &cpuset);
+    //fprintf(stderr, "thread %ld set affinity %d\n", gettid(), arg_holder->coreIdx);
     arg_holder->threadFunc(arg_holder->arg_struct_ptr);
     pthread_exit(NULL);
 }
