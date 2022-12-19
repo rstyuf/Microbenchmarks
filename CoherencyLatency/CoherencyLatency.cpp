@@ -6,8 +6,8 @@
 
 #define ITERATIONS 10000000;
 
-float RunTest(unsigned int processor1, unsigned int processor2, uint64_t iter);
-float RunOwnedTest(unsigned int processor1, unsigned int processor2, uint64_t iter);
+TimerResult RunTest(unsigned int processor1, unsigned int processor2, uint64_t iter);
+TimerResult RunOwnedTest(unsigned int processor1, unsigned int processor2, uint64_t iter);
 DWORD WINAPI LatencyTestThread(LPVOID param);
 DWORD WINAPI ReadLatencyTestThread(LPVOID param);
 
@@ -25,10 +25,10 @@ typedef struct LatencyThreadData {
 int main(int argc, char *argv[]) {
     SYSTEM_INFO sysInfo;
     DWORD numProcs;
-    float** latencies;
+    TimerResult **latencies;
     uint64_t iter = ITERATIONS;
     int offsets = 1;
-    float (*test)(unsigned int, unsigned int, uint64_t) = RunTest;
+    TimerResult (*test)(unsigned int, unsigned int, uint64_t) = RunTest;
 
     for (int argIdx = 1; argIdx < argc; argIdx++) {
         if (*(argv[argIdx]) == '-') {
@@ -63,37 +63,38 @@ int main(int argc, char *argv[]) {
     GetSystemInfo(&sysInfo);
     numProcs = sysInfo.dwNumberOfProcessors;
     fprintf(stderr, "Number of CPUs: %u\n", numProcs);
-    latencies = (float **)malloc(sizeof(float*) * offsets);
+    latencies = (TimerResult **) malloc(sizeof(TimerResult*) * offsets); //Allocating array of pointers (one for each offset) to arrays of results
     if (latencies == NULL) {
         fprintf(stderr, "couldn't allocate result array\n");
         return 0;
     }
-	memset(latencies, 0, sizeof(float) * offsets);
-
+    memset(latencies, 0, sizeof(TimerResult*) * offsets); //? Zeroing the pointers? Why? TODO
+    TimerResult non_result;
+    non_result.per_iter_ns = 0;
     for (int offsetIdx = 0; offsetIdx < offsets; offsetIdx++) {
         bouncy = (LONG64*)((char*)bouncyBase + offsetIdx * 64);
-        latencies[offsetIdx] = (float*)malloc(sizeof(float) * numProcs * numProcs);
-        float *latenciesPtr = latencies[offsetIdx];
+        latencies[offsetIdx] = (TimerResult*)malloc(sizeof(TimerResult) * numProcs * numProcs);
+        TimerResult *latenciesPtr = latencies[offsetIdx];
         
         // Run all to all, skipping testing a core against itself ofc
         // technically can skip the other way around (start j = i + 1) but meh
         for (int i = 0;i < numProcs; i++) {
             for (int j = 0;j < numProcs; j++) {
-                latenciesPtr[j + i * numProcs] = i == j ? 0 : test(i, j, iter);
+                latenciesPtr[j + i * numProcs] = i == j ? non_result : test(i, j, iter);
             }
         }
     }
 
       for (int offsetIdx = 0; offsetIdx < offsets; offsetIdx++) {
         printf("Cache line offset: %d\n", offsetIdx);
-        float* latenciesPtr = latencies[offsetIdx];
+        TimerResult* latenciesPtr = latencies[offsetIdx];
 
         // print thing to copy to excel
         for (int i = 0;i < numProcs; i++) {
             for (int j = 0;j < numProcs; j++) {
                 if (j != 0) printf(",");
                 if (j == i) printf("x");
-                else printf("%f", latenciesPtr[j + i * numProcs]);
+                else printf("%f", latenciesPtr[j + i * numProcs].per_iter_ns); //TODO replace with something generic that allows printing more details if we want. (ie, MSR counts)
             }
             printf("\n");
         }
@@ -107,7 +108,7 @@ int main(int argc, char *argv[]) {
 }
 
 // run test and gather timing data using the specified thread function
-float TimeThreads(unsigned int processor1,
+TimerResult TimeThreads(unsigned int processor1,
                   unsigned int processor2,
                   uint64_t iter, 
                   LatencyData lat1, 
@@ -123,7 +124,9 @@ float TimeThreads(unsigned int processor1,
 
     if (testThreads[0] == NULL || testThreads[1] == NULL) {
         fprintf(stderr, "Failed to create test threads\n");
-        return -1;
+        // Need better way to do this but for now:
+        timer_result.per_iter_ns = -1;
+        return timer_result;
     }
 
     SetThreadAffinityMask(testThreads[0], 1ULL << (uint64_t)processor1);
@@ -142,7 +145,7 @@ float TimeThreads(unsigned int processor1,
     CloseHandle(testThreads[0]);
     CloseHandle(testThreads[1]);
 
-    return timer_result.per_iter_ns; //TODO, change to return result
+    return timer_result;
 }
 
 /// <summary>
@@ -153,9 +156,9 @@ float TimeThreads(unsigned int processor1,
 /// <param name="iter">Number of iterations</param>
 /// <param name="bouncy">aligned mem to bounce around</param>
 /// <returns>latency per iteration in ns</returns>
-float RunTest(unsigned int processor1, unsigned int processor2, uint64_t iter) {
+TimerResult RunTest(unsigned int processor1, unsigned int processor2, uint64_t iter) {
     LatencyData lat1, lat2;
-    float latency;
+    TimerResult latency;
 
     *bouncy = 0;
     lat1.iterations = iter;
@@ -169,10 +172,10 @@ float RunTest(unsigned int processor1, unsigned int processor2, uint64_t iter) {
     return latency;
 }
 
-float RunOwnedTest(unsigned int processor1, unsigned int processor2, uint64_t iter) {
+TimerResult RunOwnedTest(unsigned int processor1, unsigned int processor2, uint64_t iter) {
     LatencyData lat1, lat2;
     LONG64* target1, * target2;
-    float latency;
+    TimerResult latency;
 
     // drop them on different cache lines
     target1 = (LONG64*)_aligned_malloc(128, 64); // TODO: Remove allocation from here and make generic (ie, bouncyBase)
