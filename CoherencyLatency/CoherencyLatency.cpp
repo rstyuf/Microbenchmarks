@@ -4,24 +4,25 @@
 //#include <windows.h>
 #include "common_timer.h"
 #include "common_threading.h"
+#include "common_memory.h"
 
 #define ITERATIONS 10000000;
 
 TimerResult RunTest(unsigned int processor1, unsigned int processor2, uint64_t iter);
 TimerResult RunOwnedTest(unsigned int processor1, unsigned int processor2, uint64_t iter);
-DWORD WINAPI LatencyTestThread(LPVOID param);
-DWORD WINAPI ReadLatencyTestThread(LPVOID param);
+int LatencyTestThread(void *param);
+int ReadLatencyTestThread(void *param);
 
-LONG64* bouncyBase;
-LONG64* bouncy;
+Ptr64b* bouncyBase;
+Ptr64b* bouncy;
 
 typedef struct LatencyThreadData {
     uint64_t start;       // initial value to write into target
     uint64_t iterations;  // number of iterations to run
-    LONG64 *target;       // value to bounce between threads, init with start - 1
-    LONG64 *readTarget;   // for read test, memory location to read from (owned by other core)
-    //DWORD affinityMask;   // thread affinity mask to set
+    Ptr64b *target;       // value to bounce between threads, init with start - 1
+    Ptr64b *readTarget;   // for read test, memory location to read from (owned by other core)
 } LatencyData;
+
 
 int main(int argc, char *argv[]) {
     int numProcs;
@@ -53,7 +54,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    bouncyBase = (LONG64*)_aligned_malloc(64 * (offsets + (test == RunOwnedTest)? 1:0), 4096); //
+    bouncyBase = (Ptr64b*)common_mem_malloc_aligned(64 * (offsets + (test == RunOwnedTest)? 1:0), 4096); 
     bouncy = bouncyBase;
     if (bouncy == NULL) {
         fprintf(stderr, "Could not allocate aligned mem\n");
@@ -70,7 +71,7 @@ int main(int argc, char *argv[]) {
     TimerResult non_result;
     non_result.per_iter_ns = 0;
     for (int offsetIdx = 0; offsetIdx < offsets; offsetIdx++) {
-        bouncy = (LONG64*)((char*)bouncyBase + offsetIdx * 64);
+        bouncy = (Ptr64b*)((char*)bouncyBase + offsetIdx * 64);
         latencies[offsetIdx] = (TimerResult*)malloc(sizeof(TimerResult) * numProcs * numProcs);
         TimerResult *latenciesPtr = latencies[offsetIdx];
         
@@ -101,7 +102,7 @@ int main(int argc, char *argv[]) {
     }
 
     free(latencies);
-    _aligned_free(bouncyBase);
+    common_mem_aligned_free(bouncyBase);
     return 0;
 }
 
@@ -132,12 +133,11 @@ TimerResult RunTest(unsigned int processor1, unsigned int processor2, uint64_t i
 
 TimerResult RunOwnedTest(unsigned int processor1, unsigned int processor2, uint64_t iter) {
     LatencyData lat1, lat2;
-    LONG64* target1, * target2;
+    Ptr64b* target1, * target2;
     TimerResult latency;
 
     // drop them on different cache lines
-    //target1 = (LONG64*)_aligned_malloc(128, 64); // TODO: Remove allocation from here and make generic (ie, bouncyBase)
-    target1 = bouncy;// this is ok because we allocate one more cache line than neceesary if owned
+    target1 = bouncy; // this is ok because we allocate one more cache line than neceesary if owned
     target2 = target1 + 8;
     if (target1 == NULL) {
         fprintf(stderr, "Could not allocate aligned mem\n");
@@ -155,7 +155,6 @@ TimerResult RunOwnedTest(unsigned int processor1, unsigned int processor2, uint6
     lat2.readTarget = target1;
 
     latency = TimeThreads(processor1, processor2, iter, lat1, lat2, ReadLatencyTestThread);
-    //_aligned_free(target1);
     return latency;
 }
 
@@ -165,7 +164,7 @@ TimerResult RunOwnedTest(unsigned int processor1, unsigned int processor2, uint6
 /// </summary>
 /// <param name="param">Latency test params</param>
 /// <returns>next value that would have been written to shared memory</returns>
-int *LatencyTestThread(void *param) {
+int LatencyTestThread(void *param) {
     LatencyData *latencyData = (LatencyData *)param;
     uint64_t current = latencyData->start;
     while (current <= 2 * latencyData->iterations) {
@@ -183,12 +182,12 @@ int *LatencyTestThread(void *param) {
 /// </summary>
 /// <param name="param">Latency test params</param>
 /// <returns>next value that would have been written to owned mem</returns>
-int *ReadLatencyTestThread(void *param) {
+int ReadLatencyTestThread(void *param) {
     LatencyData* latencyData = (LatencyData*)param;
     uint64_t current = latencyData->start;
     //uint64_t startTsc = __rdtsc();
-    volatile uint64_t* read_target = latencyData->readTarget; // needs to be volatile otherwise gcc optimizes it out
-    volatile uint64_t* write_target = latencyData->target;
+    volatile Ptr64b* read_target = latencyData->readTarget; // needs to be volatile otherwise gcc optimizes it out
+    volatile Ptr64b* write_target = latencyData->target;
     while (current <= 2 * latencyData->iterations) {
         if (*read_target == current - 1) {
             *(write_target) = current;
