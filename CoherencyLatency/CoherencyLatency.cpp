@@ -104,7 +104,7 @@ int main(int argc, char *argv[]) {
     _aligned_free(bouncyBase);
     return 0;
 }
-
+/*
 // run test and gather timing data using the specified thread function
 TimerResult TimeThreads(unsigned int processor1,
                   unsigned int processor2,
@@ -145,7 +145,7 @@ TimerResult TimeThreads(unsigned int processor1,
 
     return timer_result;
 }
-
+*/
 /// <summary>
 /// Measures latency from one logical processor core to another
 /// </summary>
@@ -204,7 +204,7 @@ TimerResult RunOwnedTest(unsigned int processor1, unsigned int processor2, uint6
 /// </summary>
 /// <param name="param">Latency test params</param>
 /// <returns>next value that would have been written to shared memory</returns>
-DWORD WINAPI LatencyTestThread(LPVOID param) {
+int *LatencyTestThread(void *param) {
     LatencyData *latencyData = (LatencyData *)param;
     uint64_t current = latencyData->start;
     while (current <= 2 * latencyData->iterations) {
@@ -222,7 +222,7 @@ DWORD WINAPI LatencyTestThread(LPVOID param) {
 /// </summary>
 /// <param name="param">Latency test params</param>
 /// <returns>next value that would have been written to owned mem</returns>
-DWORD WINAPI ReadLatencyTestThread(LPVOID param) {
+int *ReadLatencyTestThread(void *param) {
     LatencyData* latencyData = (LatencyData*)param;
     uint64_t current = latencyData->start;
     uint64_t startTsc = __rdtsc();

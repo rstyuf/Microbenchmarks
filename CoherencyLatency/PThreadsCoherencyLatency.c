@@ -200,12 +200,12 @@ TimerResult RunOwnedTest(unsigned int processor1, unsigned int processor2, uint6
     lat1.start = 3;
     lat1.target = target1;
     lat1.readTarget = target2;
-    lat1.processorIndex = processor1;
+    //lat1.processorIndex = processor1;
     lat2.iterations = iter;
     lat2.start = 2;
     lat2.target = target2;
     lat2.readTarget = target1;
-    lat2.processorIndex = processor2;
+    //lat2.processorIndex = processor2;
 
     latency = TimeThreads(processor1, processor2, iter, lat1, lat2, ReadLatencyTestThread);
     free(target1);//_aligned_free(target1);
@@ -234,8 +234,16 @@ int *LatencyTestThread(void *param) {
         }
     }
 
-    pthread_exit(NULL);
+    //pthread_exit(NULL);
+	return current;
 }
+
+/// <summary>
+/// Similar thing but tries to not bounce cache line ownership
+/// Instead, threads write to different cache lines
+/// </summary>
+/// <param name="param">Latency test params</param>
+/// <returns>next value that would have been written to owned mem</returns>
 int *ReadLatencyTestThread(void *param) {
     LatencyData *latencyData = (LatencyData *)param;
     //cpu_set_t cpuset;
@@ -260,5 +268,6 @@ int *ReadLatencyTestThread(void *param) {
         }
     }
 
-    pthread_exit(NULL);
+    //pthread_exit(NULL);
+	return current;
 }
