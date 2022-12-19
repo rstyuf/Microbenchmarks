@@ -53,7 +53,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    bouncyBase = (LONG64*)_aligned_malloc(64 * offsets, 4096);
+    bouncyBase = (LONG64*)_aligned_malloc(64 * (offsets + (test == RunOwnedTest)? 1:0), 4096); //
     bouncy = bouncyBase;
     if (bouncy == NULL) {
         fprintf(stderr, "Could not allocate aligned mem\n");
@@ -136,7 +136,8 @@ TimerResult RunOwnedTest(unsigned int processor1, unsigned int processor2, uint6
     TimerResult latency;
 
     // drop them on different cache lines
-    target1 = (LONG64*)_aligned_malloc(128, 64); // TODO: Remove allocation from here and make generic (ie, bouncyBase)
+    //target1 = (LONG64*)_aligned_malloc(128, 64); // TODO: Remove allocation from here and make generic (ie, bouncyBase)
+    target1 = bouncy;// this is ok because we allocate one more cache line than neceesary if owned
     target2 = target1 + 8;
     if (target1 == NULL) {
         fprintf(stderr, "Could not allocate aligned mem\n");
@@ -154,7 +155,7 @@ TimerResult RunOwnedTest(unsigned int processor1, unsigned int processor2, uint6
     lat2.readTarget = target1;
 
     latency = TimeThreads(processor1, processor2, iter, lat1, lat2, ReadLatencyTestThread);
-    _aligned_free(target1);
+    //_aligned_free(target1);
     return latency;
 }
 

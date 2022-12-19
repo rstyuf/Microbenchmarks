@@ -69,7 +69,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    if (0 != posix_memalign((void **)(&bouncyBase), 4096, 4096)) {
+    if (0 != posix_memalign((void **)(&bouncyBase), 64 * (offsets + (test == RunOwnedTest)? 1:0), 4096)) {
         fprintf(stderr, "Could not allocate aligned mem\n");
         return 0;
     }
@@ -118,41 +118,8 @@ int main(int argc, char *argv[]) {
     free(bouncyBase);
     return 0;
 }
-/*
-// run test and gather timing data using the specified thread function
-TimerResult TimeThreads(unsigned int proc1,
-                  unsigned int proc2,
-                  uint64_t iter,
-                  LatencyData *lat1,
-                  LatencyData *lat2,
-                  void *(*threadFunc)(void *)) {
-    TimerStructure timer;
-    TimerResult timer_result;
-    pthread_t testThreads[2];
-    int t1rc, t2rc;
-    void *res1, *res2;
 
-    common_timer_start(&timer);
-    t1rc = pthread_create(&testThreads[0], NULL, threadFunc, (void *)lat1);
-    t2rc = pthread_create(&testThreads[1], NULL, threadFunc, (void *)lat2);
-    if (t1rc != 0 || t2rc != 0) {
-      fprintf(stderr, "Could not create threads\n");
-        // Need better way to do this but for now:
-        timer_result.per_iter_ns = -1;
-        return timer_result;
-    }
 
-    pthread_join(testThreads[0], &res1);
-    pthread_join(testThreads[1], &res2);
-    
-    // each thread does interlocked compare and exchange iterations times. We multipy iter count by 2 to get overall count of locked ops
-    common_timer_end(&timer, &timer_result, iter*2);
-
-    fprintf(stderr, "%d to %d: %f ns\n", proc1, proc2, timer_result.per_iter_ns*2); //Lat Multiplied by 2 to get previous behavior
-    
-    return timer_result;
-}
-*/
 /// <summary>
 /// Measures latency from one logical processor core to another
 /// </summary>
@@ -185,10 +152,11 @@ TimerResult RunOwnedTest(unsigned int processor1, unsigned int processor2, uint6
 
     // drop them on different cache lines
     //target1 = (uint64_t*)_aligned_malloc(128, 64); // TODO: Remove allocation from here and make generic (ie, bouncyBase)
-	 if (0 != posix_memalign((void **)(&target1), 128, 64)) {
-        fprintf(stderr, "Could not allocate aligned mem\n");
-        return 0;
-    }
+    //if (0 != posix_memalign((void **)(&target1), 128, 64)) {
+    //    fprintf(stderr, "Could not allocate aligned mem\n");
+    //    return 0;
+    //}
+    target1 = bouncy; // this is ok because we allocate one more cache line than neceesary if owned 
     target2 = target1 + 8;
     if (target1 == NULL) {
         fprintf(stderr, "Could not allocate aligned mem\n");
@@ -208,7 +176,7 @@ TimerResult RunOwnedTest(unsigned int processor1, unsigned int processor2, uint6
     //lat2.processorIndex = processor2;
 
     latency = TimeThreads(processor1, processor2, iter, lat1, lat2, ReadLatencyTestThread);
-    free(target1);//_aligned_free(target1);
+    //free(target1);//_aligned_free(target1);
     return latency;
 }
 
