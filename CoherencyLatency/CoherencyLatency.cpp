@@ -133,15 +133,16 @@ float TimeThreads(unsigned int processor1,
     ResumeThread(testThreads[0]);
     ResumeThread(testThreads[1]);
     WaitForMultipleObjects(2, testThreads, TRUE, INFINITE);
-    common_timer_end(&timer, &timer_result, iter);
+    
+    // each thread does interlocked compare and exchange iterations times. We multipy iter count by 2 to get overall count of locked ops
+    common_timer_end(&timer, &timer_result, iter*2);
 
-    fprintf(stderr, "%d to %d: %f ns\n", processor1, processor2, timer_result.per_iter_ns);
+    fprintf(stderr, "%d to %d: %f ns\n", processor1, processor2, timer_result.per_iter_ns*2); //Lat Multiplied by 2 to get previous behavior
 
     CloseHandle(testThreads[0]);
     CloseHandle(testThreads[1]);
 
-    // each thread does interlocked compare and exchange iterations times. divide by 2 to get overall count of locked ops
-    return timer_result.per_iter_ns / 2; //TODO, change to return result and multiply iter by 2 in timer_end func
+    return timer_result.per_iter_ns; //TODO, change to return result
 }
 
 /// <summary>

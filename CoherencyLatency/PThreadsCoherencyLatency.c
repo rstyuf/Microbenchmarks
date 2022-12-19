@@ -141,12 +141,13 @@ float TimeThreads(unsigned int proc1,
 
     pthread_join(testThreads[0], &res1);
     pthread_join(testThreads[1], &res2);
-    common_timer_end(&timer, &timer_result, iter);
+    
+    // each thread does interlocked compare and exchange iterations times. We multipy iter count by 2 to get overall count of locked ops
+    common_timer_end(&timer, &timer_result, iter*2);
 
-
-    fprintf(stderr, "%d to %d: %f ns\n", proc1, proc2, timer_result.per_iter_ns);
-    // each thread does interlocked compare and exchange iterations times. divide by 2 to get overall count of locked ops
-    return timer_result.per_iter_ns / 2; //TODO, change to return result and multiply iter by 2 in timer_end func
+    fprintf(stderr, "%d to %d: %f ns\n", proc1, proc2, timer_result.per_iter_ns*2); //Lat Multiplied by 2 to get previous behavior
+    
+    return timer_result.per_iter_ns; //TODO, change to return result
 }
 
 /// <summary>
