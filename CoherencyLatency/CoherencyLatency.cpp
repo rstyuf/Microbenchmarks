@@ -33,19 +33,19 @@ int main(int argc, char *argv[]) {
     for (int argIdx = 1; argIdx < argc; argIdx++) {
         if (*(argv[argIdx]) == '-') {
             char* arg = argv[argIdx] + 1;
-            if (_strnicmp(arg, "iterations", 10) == 0) {
+            if (strncmp(arg, "iterations", 10) == 0) { //todo: Make Case Insensitive (ie _strnicmp on Windows)
                 argIdx++;
                 iter = atoi(argv[argIdx]);
                 fprintf(stderr, "%lu iterations requested\n", iter);
             }
-            else if (_strnicmp(arg, "bounce", 6) == 0) {
+            else if (strncmp(arg, "bounce", 6) == 0) { //todo: Make Case Insensitive (ie _strnicmp on Windows)
                 fprintf(stderr, "Bouncy\n");
             }
-            else if (_strnicmp(arg, "owned", 5) == 0) {
+            else if (strncmp(arg, "owned", 5) == 0) { //todo: Make Case Insensitive (ie _strnicmp on Windows)
                 test = RunOwnedTest;
                 fprintf(stderr, "Using separate cache lines for each thread to write to\n");
             }
-            else if (_strnicmp(arg, "offset", 6) == 0) {
+            else if (strncmp(arg, "offset", 6) == 0) { //todo: Make Case Insensitive (ie _strnicmp on Windows)
                 argIdx++;
                 offsets = atoi(argv[argIdx]);
                 fprintf(stderr, "Offsets: %d\n", offsets);
@@ -57,6 +57,7 @@ int main(int argc, char *argv[]) {
     bouncy = bouncyBase;
     if (bouncy == NULL) {
         fprintf(stderr, "Could not allocate aligned mem\n");
+        return 0;
     }
 
     GetSystemInfo(&sysInfo);
@@ -67,12 +68,13 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "couldn't allocate result array\n");
         return 0;
     }
+	memset(latencies, 0, sizeof(float) * offsets);
 
     for (DWORD offsetIdx = 0; offsetIdx < offsets; offsetIdx++) {
         bouncy = (LONG64*)((char*)bouncyBase + offsetIdx * 64);
         latencies[offsetIdx] = (float*)malloc(sizeof(float) * numProcs * numProcs);
-        float* latenciesPtr = latencies[offsetIdx];
-
+        float *latenciesPtr = latencies[offsetIdx];
+        
         // Run all to all, skipping testing a core against itself ofc
         // technically can skip the other way around (start j = i + 1) but meh
         for (DWORD i = 0; i < numProcs; i++) {
@@ -139,7 +141,7 @@ float TimeThreads(unsigned int processor1, unsigned int processor2, uint64_t ite
 }
 
 /// <summary>
-/// Measures latency from one processor core to another
+/// Measures latency from one logical processor core to another
 /// </summary>
 /// <param name="processor1">processor number 1</param>
 /// <param name="processor2">processor number 2</param>
@@ -168,7 +170,7 @@ float RunOwnedTest(unsigned int processor1, unsigned int processor2, uint64_t it
     float latency;
 
     // drop them on different cache lines
-    target1 = (LONG64*)_aligned_malloc(128, 64);
+    target1 = (LONG64*)_aligned_malloc(128, 64); // TODO: Remove allocation from here and make generic (ie, bouncyBase)
     target2 = target1 + 8;
     if (target1 == NULL) {
         fprintf(stderr, "Could not allocate aligned mem\n");
