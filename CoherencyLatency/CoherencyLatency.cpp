@@ -106,7 +106,13 @@ int main(int argc, char *argv[]) {
     return 0;
 }
 
-float TimeThreads(unsigned int processor1, unsigned int processor2, uint64_t iter, LatencyData lat1, LatencyData lat2, DWORD (*threadFunc)(LPVOID)) {
+// run test and gather timing data using the specified thread function
+float TimeThreads(unsigned int processor1,
+                  unsigned int processor2,
+                  uint64_t iter, 
+                  LatencyData lat1, 
+                  LatencyData lat2,
+                  DWORD (*threadFunc)(LPVOID)) {
     TimerStructure timer;
     TimerResult timer_result;
     HANDLE testThreads[2];
