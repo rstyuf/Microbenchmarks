@@ -5,12 +5,13 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <sys/sysinfo.h>
-#include <sys/time.h>
+//#include <sys/time.h>
 #include <sys/types.h>
 #include <sys/syscall.h>
 #include <unistd.h>
 #include <sched.h>
 #include <pthread.h>
+#include "common_timer.h"
 
 #define ITERATIONS 10000000;
 
@@ -124,13 +125,13 @@ float TimeThreads(unsigned int proc1,
                   LatencyData *lat1,
                   LatencyData *lat2,
                   void *(*threadFunc)(void *)) {
-    struct timeval startTv, endTv;
-    struct timezone startTz, endTz;
+    TimerStructure timer;
+    TimerResult timer_result;
     pthread_t testThreads[2];
     int t1rc, t2rc;
     void *res1, *res2;
 
-    gettimeofday(&startTv, &startTz);
+    common_timer_start(&timer);
     t1rc = pthread_create(&testThreads[0], NULL, threadFunc, (void *)lat1);
     t2rc = pthread_create(&testThreads[1], NULL, threadFunc, (void *)lat2);
     if (t1rc != 0 || t2rc != 0) {
@@ -140,13 +141,12 @@ float TimeThreads(unsigned int proc1,
 
     pthread_join(testThreads[0], &res1);
     pthread_join(testThreads[1], &res2);
-    gettimeofday(&endTv, &endTz);
+    common_timer_end(&timer, &timer_result, iter);
 
-    uint64_t time_diff_ms = 1000 * (endTv.tv_sec - startTv.tv_sec) + ((endTv.tv_usec - startTv.tv_usec) / 1000);
-    float latency = 1e6 * (float)time_diff_ms / (float)iter;
-    fprintf(stderr, "%d to %d: %f ns\n", proc1, proc2, latency);
+
+    fprintf(stderr, "%d to %d: %f ns\n", proc1, proc2, timer_result.per_iter_ns);
     // each thread does interlocked compare and exchange iterations times. divide by 2 to get overall count of locked ops
-    return latency / 2;
+    return timer_result.per_iter_ns / 2; //TODO, change to return result and multiply iter by 2 in timer_end func
 }
 
 /// <summary>

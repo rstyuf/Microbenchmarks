@@ -47,7 +47,7 @@ void common_timer_start(TimerStructure* timer) {
     gettimeofday(&(timer->startTv),&(timer->startTz));
 #endif
 }
-void common_timer_end(TimerStructure* timer, TimerResult* results, int iterations_cnt) {
+void common_timer_end(TimerStructure* timer, TimerResult* results, unsigned int iterations_cnt) {
 #if ENVTYPE == WINDOWS_MSVC
     ftime(&(timer->end));
     results->time_dif_ms = 1000 * (timer->end.time - timer->start.time) + (timer->end.millitm - timer->start.millitm);

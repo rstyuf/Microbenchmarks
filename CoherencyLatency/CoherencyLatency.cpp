@@ -1,8 +1,8 @@
 #include <stdio.h>
 #include <stdint.h>
-#include <sys\timeb.h>
 #include <intrin.h>
 #include <windows.h>
+#include "common_timer.h"
 
 #define ITERATIONS 10000000;
 
@@ -107,7 +107,8 @@ int main(int argc, char *argv[]) {
 }
 
 float TimeThreads(unsigned int processor1, unsigned int processor2, uint64_t iter, LatencyData lat1, LatencyData lat2, DWORD (*threadFunc)(LPVOID)) {
-    struct timeb start, end;
+    TimerStructure timer;
+    TimerResult timer_result;
     HANDLE testThreads[2];
     DWORD tid1, tid2;
 
@@ -122,22 +123,19 @@ float TimeThreads(unsigned int processor1, unsigned int processor2, uint64_t ite
     SetThreadAffinityMask(testThreads[0], 1ULL << (uint64_t)processor1);
     SetThreadAffinityMask(testThreads[1], 1ULL << (uint64_t)processor2);
 
-    ftime(&start);
+    common_timer_start(&timer);
     ResumeThread(testThreads[0]);
     ResumeThread(testThreads[1]);
     WaitForMultipleObjects(2, testThreads, TRUE, INFINITE);
-    ftime(&end);
+    common_timer_end(&timer, &timer_result, iter);
 
-    int64_t time_diff_ms = 1000 * (end.time - start.time) + (end.millitm - start.millitm);
-    float latency = 1e6 * (float)time_diff_ms / (float)iter;
-
-    fprintf(stderr, "%d to %d: %f ns\n", processor1, processor2, latency);
+    fprintf(stderr, "%d to %d: %f ns\n", processor1, processor2, timer_result.per_iter_ns);
 
     CloseHandle(testThreads[0]);
     CloseHandle(testThreads[1]);
 
     // each thread does interlocked compare and exchange iterations times. divide by 2 to get overall count of locked ops
-    return latency / 2;
+    return timer_result.per_iter_ns / 2; //TODO, change to return result and multiply iter by 2 in timer_end func
 }
 
 /// <summary>
