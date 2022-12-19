@@ -12,6 +12,7 @@
 #include <sched.h>
 #include <pthread.h>
 #include "common_timer.h"
+#include "common_threading.h"
 
 #define ITERATIONS 10000000;
 
@@ -72,7 +73,7 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Could not allocate aligned mem\n");
         return 0;
     }
-    numProcs = get_nprocs();
+    numProcs = common_threading_get_num_cpu_cores();
     fprintf(stderr, "Number of CPUs: %u\n", numProcs);
     latencies = (TimerResult **) malloc(sizeof(TimerResult*) * offsets); //Allocating array of pointers (one for each offset) to arrays of results
     if (latencies == NULL) {

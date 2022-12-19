@@ -1,8 +1,9 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <intrin.h>
-#include <windows.h>
+//#include <windows.h>
 #include "common_timer.h"
+#include "common_threading.h"
 
 #define ITERATIONS 10000000;
 
@@ -23,8 +24,7 @@ typedef struct LatencyThreadData {
 } LatencyData;
 
 int main(int argc, char *argv[]) {
-    SYSTEM_INFO sysInfo;
-    DWORD numProcs;
+    int numProcs;
     TimerResult **latencies;
     uint64_t iter = ITERATIONS;
     int offsets = 1;
@@ -59,9 +59,7 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Could not allocate aligned mem\n");
         return 0;
     }
-
-    GetSystemInfo(&sysInfo);
-    numProcs = sysInfo.dwNumberOfProcessors;
+    numProcs = common_threading_get_num_cpu_cores();
     fprintf(stderr, "Number of CPUs: %u\n", numProcs);
     latencies = (TimerResult **) malloc(sizeof(TimerResult*) * offsets); //Allocating array of pointers (one for each offset) to arrays of results
     if (latencies == NULL) {
