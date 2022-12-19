@@ -4,7 +4,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdint.h>
-#include <sys/sysinfo.h>
+//#include <sys/sysinfo.h>
 //#include <sys/time.h>
 #include <sys/types.h>
 #include <sys/syscall.h>
@@ -32,7 +32,7 @@ typedef struct LatencyThreadData {
     uint64_t iterations;  // number of iterations to run
     uint64_t *target;       // value to bounce between threads, init with start - 1
     uint64_t *readTarget;   // for read test, memory location to read from (owned by other core)
-    unsigned int processorIndex;
+    //unsigned int processorIndex;
 } LatencyData;
 
 
@@ -118,7 +118,7 @@ int main(int argc, char *argv[]) {
     free(bouncyBase);
     return 0;
 }
-
+/*
 // run test and gather timing data using the specified thread function
 TimerResult TimeThreads(unsigned int proc1,
                   unsigned int proc2,
@@ -152,7 +152,7 @@ TimerResult TimeThreads(unsigned int proc1,
     
     return timer_result;
 }
-
+*/
 /// <summary>
 /// Measures latency from one logical processor core to another
 /// </summary>
@@ -169,12 +169,12 @@ TimerResult RunTest(unsigned int processor1, unsigned int processor2, uint64_t i
     lat1.iterations = iter;
     lat1.start = 1;
     lat1.target = bouncy;
-    lat1.processorIndex = processor1;
+    //lat1.processorIndex = processor1;
     lat2.iterations = iter;
     lat2.start = 2;
     lat2.target = bouncy;
-    lat2.processorIndex = processor2;
-    latency = TimeThreads(processor1, processor2, iter, &lat1, &lat2, LatencyTestThread);
+    //lat2.processorIndex = processor2;
+    latency = TimeThreads(processor1, processor2, iter, lat1, lat2, LatencyTestThread);
     return latency;
 }
 
@@ -207,7 +207,7 @@ TimerResult RunOwnedTest(unsigned int processor1, unsigned int processor2, uint6
     lat2.readTarget = target1;
     lat2.processorIndex = processor2;
 
-    latency = TimeThreads(processor1, processor2, iter, &lat1, &lat2, ReadLatencyTestThread);
+    latency = TimeThreads(processor1, processor2, iter, lat1, lat2, ReadLatencyTestThread);
     free(target1);//_aligned_free(target1);
     return latency;
 }
@@ -218,45 +218,45 @@ TimerResult RunOwnedTest(unsigned int processor1, unsigned int processor2, uint6
 /// </summary>
 /// <param name="param">Latency test params</param>
 /// <returns>next value that would have been written to shared memory</returns>
-void *LatencyTestThread(void *param) {
+int *LatencyTestThread(void *param) {
     LatencyData *latencyData = (LatencyData *)param;
-    cpu_set_t cpuset;
+    //cpu_set_t cpuset;
     uint64_t current = latencyData->start;
 
-    CPU_ZERO(&cpuset);
-    CPU_SET(latencyData->processorIndex, &cpuset);
-    sched_setaffinity(gettid(), sizeof(cpu_set_t), &cpuset);
+    //CPU_ZERO(&cpuset);
+    //CPU_SET(latencyData->processorIndex, &cpuset);
+    //sched_setaffinity(gettid(), sizeof(cpu_set_t), &cpuset);
     //fprintf(stderr, "thread %ld set affinity %d\n", gettid(), latencyData->processorIndex);
 
     while (current <= 2 * latencyData->iterations) {
-        if (__sync_bool_compare_and_swap(latencyData->target, current - 1, current)) {
+        if (__sync_bool_compare_and_swap(latencyData->target, current - 1, current)) { //TODO: replace with some more generic operation, maybe using C's stdatomics
             current += 2;
         }
     }
 
     pthread_exit(NULL);
 }
-void *ReadLatencyTestThread(void *param) {
+int *ReadLatencyTestThread(void *param) {
     LatencyData *latencyData = (LatencyData *)param;
-    cpu_set_t cpuset;
+    //cpu_set_t cpuset;
     uint64_t current = latencyData->start;
     //uint64_t startTsc = __rdtsc();
-	volatile uint64_t* read_target = latencyData->readTarget;
-	volatile uint64_t* write_target = latencyData->target;
-    CPU_ZERO(&cpuset);
-    CPU_SET(latencyData->processorIndex, &cpuset);
-    sched_setaffinity(gettid(), sizeof(cpu_set_t), &cpuset);
+    volatile uint64_t* read_target = latencyData->readTarget;
+    volatile uint64_t* write_target = latencyData->target;
+    //CPU_ZERO(&cpuset);
+    //CPU_SET(latencyData->processorIndex, &cpuset);
+    //sched_setaffinity(gettid(), sizeof(cpu_set_t), &cpuset);
     //fprintf(stderr, "thread %ld set affinity %d\n", gettid(), latencyData->processorIndex);
 
     while (current <= 2 * latencyData->iterations) {
-		//fprintf(stderr, "InWhile: thread %ld -- cur=%d , rt=%d , wt=%d =  \n", gettid(), current, *(latencyData->readTarget), *(latencyData->target));
+        //fprintf(stderr, "InWhile: thread %ld -- cur=%d , rt=%d , wt=%d =  \n", gettid(), current, *(latencyData->readTarget), *(latencyData->target));
         if (/*(*(latencyData->readTarget)*/ *read_target == current - 1) {
-			//fprintf(stderr, "InIf: thread %ld -- cur=%d , rt=%d , wt=%d =  \n", gettid(), current, *(latencyData->readTarget), *(latencyData->target));
+            //fprintf(stderr, "InIf: thread %ld -- cur=%d , rt=%d , wt=%d =  \n", gettid(), current, *(latencyData->readTarget), *(latencyData->target));
             //*(latencyData->target) = current;
-			*(write_target) = current;
+            *(write_target) = current;
             current += 2;
             //	_mm_sfence();
-			asm volatile ("mfence" ::: "memory");
+            asm volatile ("mfence" ::: "memory"); //TODO: replace with some more generic operation, maybe using C's stdatomics
         }
     }
 

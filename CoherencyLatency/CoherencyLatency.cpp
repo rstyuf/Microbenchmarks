@@ -20,7 +20,7 @@ typedef struct LatencyThreadData {
     uint64_t iterations;  // number of iterations to run
     LONG64 *target;       // value to bounce between threads, init with start - 1
     LONG64 *readTarget;   // for read test, memory location to read from (owned by other core)
-    DWORD affinityMask;   // thread affinity mask to set
+    //DWORD affinityMask;   // thread affinity mask to set
 } LatencyData;
 
 int main(int argc, char *argv[]) {
@@ -208,7 +208,7 @@ DWORD WINAPI LatencyTestThread(LPVOID param) {
     LatencyData *latencyData = (LatencyData *)param;
     uint64_t current = latencyData->start;
     while (current <= 2 * latencyData->iterations) {
-        if (_InterlockedCompareExchange64(latencyData->target, current, current - 1) == current - 1) {
+        if (_InterlockedCompareExchange64(latencyData->target, current, current - 1) == current - 1) { //TODO: replace with some more generic operation, maybe using C's stdatomics
             current += 2;
         }
     }
@@ -230,7 +230,7 @@ DWORD WINAPI ReadLatencyTestThread(LPVOID param) {
         if (*(latencyData->readTarget) == current - 1) {
             *(latencyData->target) = current;
             current += 2;
-            _mm_sfence();
+            _mm_sfence(); //TODO: replace with some more generic operation, maybe using C's stdatomics
         }
     }
 
