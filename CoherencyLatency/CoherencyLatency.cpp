@@ -70,27 +70,27 @@ int main(int argc, char *argv[]) {
     }
 	memset(latencies, 0, sizeof(float) * offsets);
 
-    for (DWORD offsetIdx = 0; offsetIdx < offsets; offsetIdx++) {
+    for (int offsetIdx = 0; offsetIdx < offsets; offsetIdx++) {
         bouncy = (LONG64*)((char*)bouncyBase + offsetIdx * 64);
         latencies[offsetIdx] = (float*)malloc(sizeof(float) * numProcs * numProcs);
         float *latenciesPtr = latencies[offsetIdx];
         
         // Run all to all, skipping testing a core against itself ofc
         // technically can skip the other way around (start j = i + 1) but meh
-        for (DWORD i = 0; i < numProcs; i++) {
-            for (DWORD j = 0; j < numProcs; j++) {
+        for (int i = 0;i < numProcs; i++) {
+            for (int j = 0;j < numProcs; j++) {
                 latenciesPtr[j + i * numProcs] = i == j ? 0 : test(i, j, iter);
             }
         }
     }
 
-    for (DWORD offsetIdx = 0; offsetIdx < offsets; offsetIdx++) {
+      for (int offsetIdx = 0; offsetIdx < offsets; offsetIdx++) {
         printf("Cache line offset: %d\n", offsetIdx);
         float* latenciesPtr = latencies[offsetIdx];
 
         // print thing to copy to excel
-        for (DWORD i = 0; i < numProcs; i++) {
-            for (DWORD j = 0; j < numProcs; j++) {
+        for (int i = 0;i < numProcs; i++) {
+            for (int j = 0;j < numProcs; j++) {
                 if (j != 0) printf(",");
                 if (j == i) printf("x");
                 else printf("%f", latenciesPtr[j + i * numProcs]);
