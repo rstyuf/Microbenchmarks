@@ -54,8 +54,8 @@ void* ThreadFunctionRunner(void* param){
 TimerResult TimeThreads(unsigned int processor1,
                        unsigned int processor2,
                        uint64_t iter, 
-                       LatencyData lat1, 
-                       LatencyData lat2,
+                       void* lat1, 
+                       void* lat2,
                        int (*threadFunc)(void *)) {
     TimerStructure timer;
     TimerResult timer_result;
@@ -63,10 +63,10 @@ TimerResult TimeThreads(unsigned int processor1,
     DWORD tid1, tid2;
     TimeThreadFuncArgsHolder funcholder_thread_1, funcholder_thread_2;
     funcholder_thread_1.threadFunc =  threadFunc;
-    funcholder_thread_1.arg_struct_ptr =  &lat1;
+    funcholder_thread_1.arg_struct_ptr = lat1;
     funcholder_thread_1.coreIdx =  processor1;
     funcholder_thread_2.threadFunc =  threadFunc;
-    funcholder_thread_2.arg_struct_ptr =  &lat2;
+    funcholder_thread_2.arg_struct_ptr = lat2;
     funcholder_thread_2.coreIdx =  processor2;
 
     testThreads[0] = CreateThread(NULL, 0, ThreadFunctionRunner, &funcholder_thread_1, CREATE_SUSPENDED, &tid1);

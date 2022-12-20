@@ -136,7 +136,7 @@ TimerResult RunTest(unsigned int processor1, unsigned int processor2, uint64_t i
     lat2.start = 2;
     lat2.target = bouncy;
 
-    latency = TimeThreads(processor1, processor2, iter, lat1, lat2, LatencyTestThread);
+    latency = TimeThreads(processor1, processor2, iter, (void*)&lat1, (void*)&lat2, LatencyTestThread);
     return latency;
 }
 
@@ -163,7 +163,7 @@ TimerResult RunOwnedTest(unsigned int processor1, unsigned int processor2, uint6
     lat2.target = target2;
     lat2.readTarget = target1;
 
-    latency = TimeThreads(processor1, processor2, iter, lat1, lat2, ReadLatencyTestThread);
+    latency = TimeThreads(processor1, processor2, iter, (void*)&lat1, (void*)&lat2, ReadLatencyTestThread);
     return latency;
 }
 
