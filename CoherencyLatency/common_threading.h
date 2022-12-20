@@ -29,6 +29,9 @@ typedef struct time_threads_func_args_holder_t{
     int ((*threadFunc)(void *));
     void* arg_struct_ptr;
     int coreIdx;
+#if IS_GCC(ENVTYPE) && (defined(NEW_PT_TIMETHREADS))    
+    pthread_barrier_t* barrier;
+#endif
 } TimeThreadFuncArgsHolder;
 
 #if IS_MSVC(ENVTYPE)
@@ -45,11 +48,17 @@ void* ThreadFunctionRunner(void* param){
     CPU_SET(arg_holder->coreIdx, &cpuset);
     sched_setaffinity(gettid(), sizeof(cpu_set_t), &cpuset);
     //fprintf(stderr, "thread %ld set affinity %d\n", gettid(), arg_holder->coreIdx);
+    #if IS_GCC(ENVTYPE) && (defined(NEW_PT_TIMETHREADS))    
+    pthread_barrier_wait(arg_holder->barrier);
+    #endif
     arg_holder->threadFunc(arg_holder->arg_struct_ptr);
     pthread_exit(NULL);
 }
 #endif
 
+
+// Need to check if TimeThreads can be used generically in other places where threads are used, and maybe in that case it can be made more generic to different thread counts.
+// We can take the iter (and relevant print) out of the function, and then turn processorX and latX into two arrays, along with an int/size_t len which represents how many.
 #if IS_MSVC(ENVTYPE)
 TimerResult TimeThreads(unsigned int processor1,
                        unsigned int processor2,
@@ -97,7 +106,7 @@ TimerResult TimeThreads(unsigned int processor1,
     
     return timer_result;
 }
-#elif IS_GCC(ENVTYPE)
+#elif IS_GCC(ENVTYPE) && !(defined(NEW_PT_TIMETHREADS))
 
 //TODO: Consider implementing more like the Windows implementation, using either pthread barriers or some other waiting system.
 TimerResult TimeThreads(unsigned int processor1,
@@ -134,6 +143,55 @@ TimerResult TimeThreads(unsigned int processor1,
     
     // each thread does interlocked compare and exchange iterations times. We multipy iter count by 2 to get overall count of locked ops
     common_timer_end(&timer, &timer_result, iter*2);
+
+    fprintf(stderr, "%d to %d: %f ns\n", processor1, processor2, timer_result.per_iter_ns*2); //Lat Multiplied by 2 to get previous behavior
+    
+    return timer_result;
+}
+#elif IS_GCC(ENVTYPE) && (defined(NEW_PT_TIMETHREADS))
+
+//TODO: Consider implementing more like the Windows implementation, using either pthread barriers or some other waiting system.
+TimerResult TimeThreads(unsigned int processor1,
+                       unsigned int processor2,
+                       uint64_t iter, 
+                       void* lat1, 
+                       void* lat2,
+                       int (*threadFunc)(void *)) {
+    TimerStructure timer;
+    TimerResult timer_result;
+    pthread_t testThreads[2];
+    int t1rc, t2rc;
+    void *res1, *res2;
+    pthread_barrier_t start_barrier; // might be worth having an end barrier too, not sure how much time it takes to close threads and if that might skew results.
+    pthread_barrier_init(&start_barrier, NULL, 3); //3 = 2 child threads + parent
+    TimeThreadFuncArgsHolder funcholder_thread_1, funcholder_thread_2;
+    funcholder_thread_1.threadFunc =  threadFunc;
+    funcholder_thread_1.arg_struct_ptr = lat1;
+    funcholder_thread_1.coreIdx =  processor1;
+    funcholder_thread_1.barrier =  &start_barrier;
+    funcholder_thread_2.threadFunc =  threadFunc;
+    funcholder_thread_2.arg_struct_ptr = lat2;
+    funcholder_thread_2.coreIdx =  processor2;
+    funcholder_thread_2.barrier =  &start_barrier;
+    
+    t1rc = pthread_create(&testThreads[0], NULL, ThreadFunctionRunner, (void *)&funcholder_thread_1);
+    t2rc = pthread_create(&testThreads[1], NULL, ThreadFunctionRunner, (void *)&funcholder_thread_2);
+    if (t1rc != 0 || t2rc != 0) {
+        fprintf(stderr, "Failed to create test threads\n");
+        // Need better way to do this but for now:
+        timer_result.per_iter_ns = -1;
+        return timer_result;
+    }
+    common_timer_start(&timer);
+    pthread_barrier_wait(&start_barrier);
+
+
+    pthread_join(testThreads[0], &res1);
+    pthread_join(testThreads[1], &res2);
+    
+    // each thread does interlocked compare and exchange iterations times. We multipy iter count by 2 to get overall count of locked ops
+    common_timer_end(&timer, &timer_result, iter*2);
+    pthread_barrier_destroy(&start_barrier);
 
     fprintf(stderr, "%d to %d: %f ns\n", processor1, processor2, timer_result.per_iter_ns*2); //Lat Multiplied by 2 to get previous behavior
     

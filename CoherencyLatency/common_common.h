@@ -68,6 +68,7 @@
 #define IS_ISA_X86_64(env) (((env%BUILDENV_GROUP_RANGE_SIZE)/ISA_GROUP_RANGE_SIZE) ==  ISA_X86_64_VAL)
 #define IS_ISA_X86_i686(env) (((env%BUILDENV_GROUP_RANGE_SIZE)/ISA_GROUP_RANGE_SIZE) ==  ISA_X86_i686_VAL)
 #define IS_ISA_AARCH64(env) (((env%BUILDENV_GROUP_RANGE_SIZE)/ISA_GROUP_RANGE_SIZE) ==  ISA_AARCH64_VAL)
+#define IS_ISA_ARM32(env) (((env%BUILDENV_GROUP_RANGE_SIZE)/ISA_GROUP_RANGE_SIZE) ==  ISA_ARM32_VAL)
 
 #define NOT_IMPLEMENTED_YET(feature_name, envs_data) do{fprintf(stderr, "ERROR:%s is not impemented as compiled! It is probably not supported on configuration/HW. Support: %s\n",feature_name, envs_data);exit(-1);}while(0)
 
