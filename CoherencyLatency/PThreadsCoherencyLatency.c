@@ -13,6 +13,7 @@
 #include <pthread.h>
 #include "common_timer.h"
 #include "common_threading.h"
+#include "common_memory.h"
 
 #define ITERATIONS 10000000;
 
@@ -166,6 +167,15 @@ TimerResult RunOwnedTest(unsigned int processor1, unsigned int processor2, uint6
     return latency;
 }
 
+
+#if ENVTYPE == WINDOWS_MSVC
+#define EXCHANGE_COMPARE(target, exch, comp) (_InterlockedCompareExchange64(target, exch, comp) == comp)
+#define STORE_FENCE() (_mm_sfence()) //TODO: Find cross platform function for Windows on ARM 
+#elif ENVTYPE == POSIX_GCC
+#define EXCHANGE_COMPARE(target, exch, comp) (__sync_bool_compare_and_swap(target, comp, exch))
+#define STORE_FENCE() (asm volatile ("mfence" ::: "memory")) //TODO: Find cross platform function for non x86 
+#endif
+
 /// <summary>
 /// Runs one thread of the latency test. should be run in pairs
 /// Always writes to target
@@ -176,7 +186,7 @@ int LatencyTestThread(void *param) {
     LatencyData *latencyData = (LatencyData *)param;
     uint64_t current = latencyData->start;
     while (current <= 2 * latencyData->iterations) {
-        if (__sync_bool_compare_and_swap(latencyData->target, current - 1, current)) { //TODO: replace with some more generic operation, maybe using C's stdatomics
+        if (EXCHANGE_COMPARE(latencyData->target, current, current - 1)) {
             current += 2;
         }
     }
@@ -200,8 +210,7 @@ int ReadLatencyTestThread(void *param) {
         if (*read_target == current - 1) {
             *(write_target) = current;
             current += 2;
-            //	_mm_sfence();
-            asm volatile ("mfence" ::: "memory"); //TODO: replace with some more generic operation, maybe using C's stdatomics
+            STORE_FENCE();
         }
     }
 
