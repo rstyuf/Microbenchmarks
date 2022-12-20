@@ -159,11 +159,24 @@ TimerResult RunOwnedTest(unsigned int processor1, unsigned int processor2, uint6
 }
 
 #if IS_MSVC(ENVTYPE)
-//#include <intrin.h>
-#include <atomic>
+#include <intrin.h>
+//#include <atomic>
 // _InterlockedCompareExchange64 seems to be implemented on all relevant platforms incl 32bit ones. Is there signif. penalty on 32b? Does it matter? TODO
 #define EXCHANGE_COMPARE(target, exch, comp) (_InterlockedCompareExchange64(target, exch, comp) == comp)  
-#define STORE_FENCE() (atomic_thread_fence(memory_order_acq_rel)) //TODO: Can we use release consistency here? If yes, memory_order_release. Also, can't find proof that it works on Arm, but I think so.
+// Using atomics below didn't seem to work as intended, so here's a less fun implementation:
+#if IS_ISA_X86_64(ENVTYPE)
+#define STORE_FENCE() (_ReadWriteBarrier())
+//#define STORE_FENCE() (_mm_sfence()) 
+#elif IS_ISA_X86_i686(ENVTYPE)
+#define STORE_FENCE() (_ReadWriteBarrier())
+#elif IS_ISA_AARCH64(ENVTYPE)
+#define STORE_FENCE() (__dmb(_ARM64_BARRIER_SY)) //Is this too strict?
+#elif IS_ISA_ARM32(ENVTYPE)
+#define STORE_FENCE() (__dmb(_ARM_BARRIER_SY))  //Is this too strict?
+#else
+#define STORE_FENCE() (NOT_IMPLEMENTED_YET("STORE_FENCE", "Implemented in x86, x86-64, Arm aarch64"))  //Might be too strong of a barrier? but at least cross platform. Formerly used asm volatile
+#endif
+//#define STORE_FENCE() (atomic_thread_fence(memory_order_acq_rel)) //TODO: Can we use release consistency here? If yes, memory_order_release. Also, can't find proof that it works on Arm, but I think so.
 //#define STORE_FENCE() (_mm_sfence()) //TODO: Find cross platform function for Windows on ARM 
 
 #elif IS_GCC(ENVTYPE)   
