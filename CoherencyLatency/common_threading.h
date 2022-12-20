@@ -2,9 +2,9 @@
 #define COMMON_THREADING_H
 //<includes>
 #include "common_common.h"
-#if ENVTYPE == WINDOWS_MSVC
+#if IS_MSVC(ENVTYPE)
 #include <windows.h>
-#elif ENVTYPE == POSIX_GCC 
+#elif IS_GCC(ENVTYPE) 
 #include <sys/sysinfo.h>
 #include <pthread.h>
 #endif
@@ -12,13 +12,13 @@
 // </includes>
 
 int32_t common_threading_get_num_cpu_cores(){
-#if ENVTYPE == WINDOWS_MSVC
+#if IS_MSVC(ENVTYPE)
     DWORD numProcs;
     SYSTEM_INFO sysInfo;
     GetSystemInfo(&sysInfo);
     numProcs = sysInfo.dwNumberOfProcessors;
     return (int32_t) numProcs;
-#elif ENVTYPE == POSIX_GCC
+#elif IS_GCC(ENVTYPE)
     return get_nprocs();
 #endif
  
@@ -31,12 +31,12 @@ typedef struct time_threads_func_args_holder_t{
     int coreIdx;
 } TimeThreadFuncArgsHolder;
 
-#if ENVTYPE == WINDOWS_MSVC
+#if IS_MSVC(ENVTYPE)
 DWORD WINAPI ThreadFunctionRunner(LPVOID param) {
     TimeThreadFuncArgsHolder *arg_holder = (TimeThreadFuncArgsHolder *)param;
     return arg_holder->threadFunc(arg_holder->arg_struct_ptr);
 }
-#elif ENVTYPE == POSIX_GCC
+#elif IS_GCC(ENVTYPE)
 #define gettid() syscall(SYS_gettid)
 void* ThreadFunctionRunner(void* param){
     TimeThreadFuncArgsHolder *arg_holder = (TimeThreadFuncArgsHolder *)param;
@@ -50,7 +50,7 @@ void* ThreadFunctionRunner(void* param){
 }
 #endif
 
-#if ENVTYPE == WINDOWS_MSVC
+#if IS_MSVC(ENVTYPE)
 TimerResult TimeThreads(unsigned int processor1,
                        unsigned int processor2,
                        uint64_t iter, 
@@ -97,14 +97,14 @@ TimerResult TimeThreads(unsigned int processor1,
     
     return timer_result;
 }
-#elif ENVTYPE == POSIX_GCC
+#elif IS_GCC(ENVTYPE)
 
 //TODO: Consider implementing more like the Windows implementation, using either pthread barriers or some other waiting system.
 TimerResult TimeThreads(unsigned int processor1,
                        unsigned int processor2,
                        uint64_t iter, 
-                       LatencyData lat1, 
-                       LatencyData lat2,
+                       void* lat1, 
+                       void* lat2,
                        int (*threadFunc)(void *)) {
     TimerStructure timer;
     TimerResult timer_result;
@@ -113,10 +113,10 @@ TimerResult TimeThreads(unsigned int processor1,
     void *res1, *res2;
     TimeThreadFuncArgsHolder funcholder_thread_1, funcholder_thread_2;
     funcholder_thread_1.threadFunc =  threadFunc;
-    funcholder_thread_1.arg_struct_ptr =  &lat1;
+    funcholder_thread_1.arg_struct_ptr = lat1;
     funcholder_thread_1.coreIdx =  processor1;
     funcholder_thread_2.threadFunc =  threadFunc;
-    funcholder_thread_2.arg_struct_ptr =  &lat2;
+    funcholder_thread_2.arg_struct_ptr = lat2;
     funcholder_thread_2.coreIdx =  processor2;
     
     common_timer_start(&timer);
@@ -138,6 +138,15 @@ TimerResult TimeThreads(unsigned int processor1,
     fprintf(stderr, "%d to %d: %f ns\n", processor1, processor2, timer_result.per_iter_ns*2); //Lat Multiplied by 2 to get previous behavior
     
     return timer_result;
+}
+#else
+TimerResult TimeThreads(unsigned int processor1,
+                       unsigned int processor2,
+                       uint64_t iter, 
+                       void* lat1, 
+                       void* lat2,
+                       int (*threadFunc)(void *)) {
+    NOT_IMPLEMENTED_YET("TimeThreads", "Implemented on MSVC and GCC");
 }
 #endif
 

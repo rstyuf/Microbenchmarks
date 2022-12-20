@@ -2,9 +2,9 @@
 #define COMMON_MEMORY_H
 //<includes>
 #include "common_common.h"
-#if ENVTYPE == WINDOWS_MSVC
+#if IS_MSVC(ENVTYPE)
 #include <windows.h>
-#elif ENVTYPE == POSIX_GCC 
+#elif IS_GCC(ENVTYPE)
 #include <sys/sysinfo.h>
 #endif
 #include <stdint.h>
@@ -12,13 +12,13 @@
 
 /*
 int32_t common_threading_get_num_cpu_cores(){
-#if ENVTYPE == WINDOWS_MSVC
+#if IS_MSVC(ENVTYPE)
     DWORD numProcs;
     SYSTEM_INFO sysInfo;
     GetSystemInfo(&sysInfo);
     numProcs = sysInfo.dwNumberOfProcessors;
     return (int32_t) numProcs;
-#elif ENVTYPE == POSIX_GCC
+#elif IS_GCC(ENVTYPE)
     return get_nprocs();
 #endif
  
@@ -26,9 +26,9 @@ int32_t common_threading_get_num_cpu_cores(){
 */
 
 Ptr64b* common_mem_malloc_aligned(size_t size_to_alloc, size_t alignment){
-    #if ENVTYPE == WINDOWS_MSVC
+    #if IS_MSVC(ENVTYPE)
     return (Ptr64b*)_aligned_malloc(size_to_alloc, alignment); 
-    #elif ENVTYPE == POSIX_GCC
+    #elif IS_GCC(ENVTYPE)
     Ptr64b* target;
     if (0 != posix_memalign((void **)(&target), size_to_alloc, alignment)) {
         return NULL;
@@ -38,9 +38,9 @@ Ptr64b* common_mem_malloc_aligned(size_t size_to_alloc, size_t alignment){
     #endif
 }
 void common_mem_aligned_free(Ptr64b* ptr){
-    #if ENVTYPE == WINDOWS_MSVC
+    #if IS_MSVC(ENVTYPE)
     _aligned_free(ptr); 
-    #elif ENVTYPE == POSIX_GCC
+    #elif IS_GCC(ENVTYPE)
     free(ptr); 
     #endif
 }
