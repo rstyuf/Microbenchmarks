@@ -3,19 +3,19 @@
 
 //<includes>
 #include "common_common.h"
-#if IS_MSVC(ENVTYPE)
+#if IS_WINDOWS(ENVTYPE)
 #include <sys\timeb.h>
-#elif IS_GCC(ENVTYPE)
+#elif IS_GCC_POSIX(ENVTYPE)
 #include <sys/time.h>
 #endif
 #include <stdint.h>
 // </includes>
 typedef struct timer_structure_t{
-#if IS_MSVC(ENVTYPE)
+#if IS_WINDOWS(ENVTYPE)
     struct timeb start;
     struct timeb end;
 
-#elif IS_GCC(ENVTYPE) // Possible to look into the updated POSIX library clock_gettime library which has a higher resolution.
+#elif IS_GCC_POSIX(ENVTYPE) // Possible to look into the updated POSIX library clock_gettime library which has a higher resolution.
     struct timeval startTv;
     struct timeval endTv;
 
@@ -32,18 +32,18 @@ typedef struct timer_result_t{
 
 //Usage: "TimerStructure t; common_timer_start(&t);"
 inline void common_timer_start(TimerStructure* timer) {
-#if IS_MSVC(ENVTYPE)
+#if IS_WINDOWS(ENVTYPE)
     ftime(&(timer->start));
-#elif IS_GCC(ENVTYPE)
+#elif IS_GCC_POSIX(ENVTYPE)
     gettimeofday(&(timer->startTv),&(timer->startTz));
 #endif
 } 
 //Usage (given started TimerStructure t and iteration count iter): "TimerResult t_res; common_timer_end(&t, &t_res, iter);"
 inline void common_timer_end(TimerStructure* timer, TimerResult* results, unsigned int iterations_cnt) {
-#if IS_MSVC(ENVTYPE)
+#if IS_WINDOWS(ENVTYPE)
     ftime(&(timer->end));
     results->time_dif_ms = 1000 * (timer->end.time - timer->start.time) + (timer->end.millitm - timer->start.millitm);
-#elif IS_GCC(ENVTYPE)
+#elif IS_GCC_POSIX(ENVTYPE)
     gettimeofday(&(timer->endTv),&(timer->endTz));
     results->time_dif_ms = 1000 * (timer->endTv.tv_sec - timer->startTv.tv_sec) + ((timer->endTv.tv_usec - timer->startTv.tv_usec) / 1000);
 #endif
@@ -58,9 +58,9 @@ inline void common_timer_end(TimerStructure* timer, TimerResult* results, unsign
 // then usage would be "TimerStructure t = common_timer_start();"
 inline TimerStructure common_timer_start_() {
     TimerStructure timer;
-#if IS_MSVC(ENVTYPE)
+#if IS_WINDOWS(ENVTYPE)
     ftime(&(timer.start));
-#elif IS_GCC(ENVTYPE)
+#elif IS_GCC_POSIX(ENVTYPE)
     gettimeofday(&(timer.startTv),&(timer.startTz));
 #endif
     return timer;
@@ -68,10 +68,10 @@ inline TimerStructure common_timer_start_() {
 // And here usage would be "TimerResult t_res = common_timer_end(&t, iter);" although we could even give up on end times in struct and have it locally, and then get struct by value, not pointer
 inline TimerResult common_timer_end_(TimerStructure* timer, unsigned int iterations_cnt) {
     TimerResult results;
-#if IS_MSVC(ENVTYPE)
+#if IS_WINDOWS(ENVTYPE)
     ftime(&(timer->end));
     results.time_dif_ms = 1000 * (timer->end.time - timer->start.time) + (timer->end.millitm - timer->start.millitm);
-#elif IS_GCC(ENVTYPE)
+#elif IS_GCC_POSIX(ENVTYPE)
     gettimeofday(&(timer->endTv),&(timer->endTz));
     results.time_dif_ms = 1000 * (timer->endTv.tv_sec - timer->startTv.tv_sec) + ((timer->endTv.tv_usec - timer->startTv.tv_usec) / 1000);
 #endif

@@ -7,18 +7,25 @@
 //For instance: XYZW where:
 //               X represents build env {1:MSVC, 2:GCC},
 //               Y represents ISA {1:x86-64, 2:x86 (i686), 3: ARM Aarch64, 4: other ARM, 0: Unknown}, 
+#define ABOVE_BUILDENV_GROUP_RANGE_SIZE (10000)
 #define BUILDENV_GROUP_RANGE_SIZE (1000)
+#define BUILDENV_WIN_MSVC_VAL (1)
+#define BUILDENV_WIN_MINGW_VAL (2)
+#define BUILDENV_POSIX_GCC_VAL (3)
+#define _BUILDENV(val) (BUILDENV_GROUP_RANGE_SIZE * val)
+/*
 #define WINDOWS_MSVC_RANGESTART (BUILDENV_GROUP_RANGE_SIZE)
 #define WINDOWS_MSVC (WINDOWS_MSVC_RANGESTART + 1)
 #define POSIX_GCC_RANGESTART (WINDOWS_MSVC_RANGESTART + BUILDENV_GROUP_RANGE_SIZE)
 #define POSIX_GCC (POSIX_GCC_RANGESTART + 1)
-
+*/
 #define ISA_GROUP_RANGE_SIZE (100)
 #define ISA_X86_64_VAL   (1)
 #define ISA_X86_i686_VAL (2)
 #define ISA_AARCH64_VAL  (3)
 #define ISA_ARM32_VAL    (4)
 #define ISA_UNKNOWN_VAL  (0)
+#define _ISA(val) (ISA_GROUP_RANGE_SIZE * val)
 
 
 // Ptr64b definition: generic datatype used to point to things
@@ -38,10 +45,12 @@
     #else
         #define ISA_VAL (ISA_UNKNOWN_VAL)    
     #endif
-    #define ENVTYPE (WINDOWS_MSVC + (ISA_VAL*ISA_GROUP_RANGE_SIZE))
+    #define ENVTYPE (_BUILDENV(BUILDENV_WIN_MSVC_VAL) + _ISA(ISA_VAL))
     typedef LONG64 Ptr64b; 
-
-#elif defined(GNUC) //GCC
+#elif defined(__MINGW64__) //MinGW
+#define _GNU_SOURCE
+#include <stdint.h>
+#include <windows.h>
 
     #ifdef __x86_64
         #define ISA_VAL (ISA_X86_64_VAL) 
@@ -57,13 +66,37 @@
         #define ISA_VAL (ISA_UNKNOWN_VAL)
         #define UNKNOWN_ARCH 1
     #endif
-    #define ENVTYPE (POSIX_GCC + (ISA_VAL*ISA_GROUP_RANGE_SIZE))
+    #define ENVTYPE (_BUILDENV(BUILDENV_WIN_MINGW_VAL) + _ISA(ISA_VAL))
 
+    typedef LONG64 Ptr64b; 
+#elif defined(__GNUC__) //GCC
+#define _GNU_SOURCE
+#include <stdint.h>
+    #ifdef __x86_64
+        #define ISA_VAL (ISA_X86_64_VAL) 
+    #elif __i686
+        #define BITS_32
+        #define ISA_VAL (ISA_X86_i686_VAL)
+    #elif __aarch64__
+        #define ISA_VAL (ISA_AARCH64_VAL)    
+    #elif __arm__
+        #define ISA_VAL (ISA_ARM32_VAL)
+        #define BITS_32
+    #else
+        #define ISA_VAL (ISA_UNKNOWN_VAL)
+        #define UNKNOWN_ARCH 1
+    #endif
+    #define ENVTYPE (_BUILDENV(BUILDENV_POSIX_GCC_VAL) + _ISA(ISA_VAL))
     typedef uint64_t Ptr64b; 
-#endif // no else, we want it to crash.
+#else //we want it to crash.
+    #error "Build Env is unsupported. Try Using GCC (mingw on Windows) or MSVC."
+#endif 
 
-#define IS_MSVC(env) ((env >= WINDOWS_MSVC_RANGESTART) && (env < (WINDOWS_MSVC_RANGESTART + BUILDENV_GROUP_RANGE_SIZE)))
-#define IS_GCC(env) ((env >= POSIX_GCC_RANGESTART) && (env < (POSIX_GCC_RANGESTART + BUILDENV_GROUP_RANGE_SIZE)))
+#define IS_MSVC(env) (((env%ABOVE_BUILDENV_GROUP_RANGE_SIZE)/BUILDENV_GROUP_RANGE_SIZE) ==  BUILDENV_WIN_MSVC_VAL)
+#define IS_GCC_MINGW(env) (((env%ABOVE_BUILDENV_GROUP_RANGE_SIZE)/BUILDENV_GROUP_RANGE_SIZE) ==  BUILDENV_WIN_MINGW_VAL)
+#define IS_GCC_POSIX(env) (((env%ABOVE_BUILDENV_GROUP_RANGE_SIZE)/BUILDENV_GROUP_RANGE_SIZE) ==  BUILDENV_POSIX_GCC_VAL)
+#define IS_GCC(env) ((IS_GCC_MINGW(env)) || (IS_GCC_POSIX(env)))
+#define IS_WINDOWS(env) ((IS_GCC_MINGW(env)) || (IS_MSVC(env)))
 
 #define IS_ISA_X86_64(env) (((env%BUILDENV_GROUP_RANGE_SIZE)/ISA_GROUP_RANGE_SIZE) ==  ISA_X86_64_VAL)
 #define IS_ISA_X86_i686(env) (((env%BUILDENV_GROUP_RANGE_SIZE)/ISA_GROUP_RANGE_SIZE) ==  ISA_X86_i686_VAL)
@@ -71,17 +104,6 @@
 #define IS_ISA_ARM32(env) (((env%BUILDENV_GROUP_RANGE_SIZE)/ISA_GROUP_RANGE_SIZE) ==  ISA_ARM32_VAL)
 
 #define NOT_IMPLEMENTED_YET(feature_name, envs_data) do{fprintf(stderr, "ERROR:%s is not impemented as compiled! It is probably not supported on configuration/HW. Support: %s\n",feature_name, envs_data);exit(-1);}while(0)
-
-
-/////
-#ifdef __x86_64
-#elif __i686
-#define BITS_32
-#elif __aarch64__
-#else
-#define UNKNOWN_ARCH 1
-#endif
-/////
 
 #endif
 

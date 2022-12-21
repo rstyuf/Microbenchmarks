@@ -2,9 +2,9 @@
 #define COMMON_THREADING_H
 //<includes>
 #include "common_common.h"
-#if IS_MSVC(ENVTYPE)
+#if IS_WINDOWS(ENVTYPE)
 #include <windows.h>
-#elif IS_GCC(ENVTYPE) 
+#elif IS_GCC_POSIX(ENVTYPE) 
 #include <sys/sysinfo.h>
 #include <pthread.h>
 #endif
@@ -12,13 +12,13 @@
 // </includes>
 
 int32_t common_threading_get_num_cpu_cores(){
-#if IS_MSVC(ENVTYPE)
+#if IS_WINDOWS(ENVTYPE)
     DWORD numProcs;
     SYSTEM_INFO sysInfo;
     GetSystemInfo(&sysInfo);
     numProcs = sysInfo.dwNumberOfProcessors;
     return (int32_t) numProcs;
-#elif IS_GCC(ENVTYPE)
+#elif IS_GCC_POSIX(ENVTYPE)
     return get_nprocs();
 #endif
  
@@ -29,17 +29,17 @@ typedef struct time_threads_func_args_holder_t{
     int ((*threadFunc)(void *));
     void* arg_struct_ptr;
     int coreIdx;
-#if IS_GCC(ENVTYPE) && (defined(NEW_PT_TIMETHREADS))    
+#if IS_GCC_POSIX(ENVTYPE) && (defined(NEW_PT_TIMETHREADS))    
     pthread_barrier_t* barrier;
 #endif
 } TimeThreadFuncArgsHolder;
 
-#if IS_MSVC(ENVTYPE)
+#if IS_WINDOWS(ENVTYPE)
 DWORD WINAPI ThreadFunctionRunner(LPVOID param) {
     TimeThreadFuncArgsHolder *arg_holder = (TimeThreadFuncArgsHolder *)param;
     return arg_holder->threadFunc(arg_holder->arg_struct_ptr);
 }
-#elif IS_GCC(ENVTYPE)
+#elif IS_GCC_POSIX(ENVTYPE)
 #define gettid() syscall(SYS_gettid)
 void* ThreadFunctionRunner(void* param){
     TimeThreadFuncArgsHolder *arg_holder = (TimeThreadFuncArgsHolder *)param;
@@ -59,7 +59,7 @@ void* ThreadFunctionRunner(void* param){
 
 // Need to check if TimeThreads can be used generically in other places where threads are used, and maybe in that case it can be made more generic to different thread counts.
 // We can take the iter (and relevant print) out of the function, and then turn processorX and latX into two arrays, along with an int/size_t len which represents how many.
-#if IS_MSVC(ENVTYPE)
+#if IS_WINDOWS(ENVTYPE)
 TimerResult TimeThreads(unsigned int processor1,
                        unsigned int processor2,
                        uint64_t iter, 
@@ -106,7 +106,7 @@ TimerResult TimeThreads(unsigned int processor1,
     
     return timer_result;
 }
-#elif IS_GCC(ENVTYPE) && !(defined(NEW_PT_TIMETHREADS))
+#elif IS_GCC_POSIX(ENVTYPE) && !(defined(NEW_PT_TIMETHREADS))
 
 //TODO: Consider implementing more like the Windows implementation, using either pthread barriers or some other waiting system.
 TimerResult TimeThreads(unsigned int processor1,
@@ -148,7 +148,7 @@ TimerResult TimeThreads(unsigned int processor1,
     
     return timer_result;
 }
-#elif IS_GCC(ENVTYPE) && (defined(NEW_PT_TIMETHREADS))
+#elif IS_GCC_POSIX(ENVTYPE) && (defined(NEW_PT_TIMETHREADS))
 
 //TODO: Consider implementing more like the Windows implementation, using either pthread barriers or some other waiting system.
 TimerResult TimeThreads(unsigned int processor1,
