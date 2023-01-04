@@ -44,7 +44,7 @@ void (*stlfFunc)(uint32_t, char *) __attribute__((fastcall)) = stlftest;
 #define BITS_32
 #elif __aarch64__
 extern void preplatencyarr(uint64_t *arr, uint64_t len);
-extern uint32_t latencytest(uint64_t iterations, uint64_t *arr);
+extern uint32_t late2ncytest(uint64_t iterations, uint64_t *arr);
 extern void matchedstlftest(uint64_t iterations, char *arr);
 extern void stlftest(uint64_t iterations, char *arr);
 extern void stlftest32(uint64_t iterations, char *arr);
@@ -70,34 +70,6 @@ float (*testFunc)(uint32_t, uint32_t, uint32_t *) = RunTest;
 
 uint32_t ITERATIONS = 100000000;
 
-int AllocHugePages(uint32_t **hugePagesArr, size_t *hugePagesAllocatedBytes, uint32_t singleSize, uint32_t testSizeCount, uint32_t maxTestSizeMb) {
-#ifndef __MINGW32__
-
-    size_t hugePageSize = 1 << 21;
-    size_t testSizeKb = singleSize ? singleSize : default_test_sizes[testSizeCount - 1];
-    size_t maxMemRequired = testSizeKb * (size_t)1024;
-    *hugePagesAllocatedBytes = maxMemRequired;
-    if (maxTestSizeMb > 0 && maxMemRequired > maxTestSizeMb * 1024 * 1024) maxMemRequired = maxTestSizeMb * 1024 * 1024;
-    maxMemRequired = (((maxMemRequired - 1) / hugePageSize) + 1) * hugePageSize;
-    fprintf(stderr, "mmap-ing %lu bytes\n", maxMemRequired);
-    (*hugePagesArr) = mmap(NULL, maxMemRequired, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB, -1, 0);
-    if ((*hugePagesArr) == (void *)-1) { // on failure, mmap will return MAP_FAILED, or (void *)-1
-        fprintf(stderr, "Failed to mmap huge pages, errno %d = %s\nWill try to use madvise\n", errno, strerror(errno));
-        if (0 != posix_memalign((void **)(hugePagesArr), 2 * 1024 * 1024, maxMemRequired)) {
-            fprintf(stderr, "Failed to allocate 2 MB aligned memory, will not use hugepages\n");
-            *hugePagesArr = NULL;
-            return -1;
-        }
-
-        madvise(*hugePagesArr, maxMemRequired, MADV_HUGEPAGE);
-    }
-    return 0;
-
-#endif
-    fprintf(stderr, "Hugepages not supported!\n");
-    return -1; // 
-}
-
 int main(int argc, char* argv[]) {
     uint32_t maxTestSizeMb = 0;
     uint32_t singleSize = 0;
@@ -106,7 +78,6 @@ int main(int argc, char* argv[]) {
     int stlf = 0, hugePages = 0;
     int stlfPageEnd = 0, numa = 0, stlfLoadDistance = 0;
     uint32_t *hugePagesArr = NULL;
-    size_t hugePagesAllocatedBytes = 0;
     for (int argIdx = 1; argIdx < argc; argIdx++) {
         if (*(argv[argIdx]) == '-') {
             char *arg = argv[argIdx] + 1;
@@ -114,7 +85,7 @@ int main(int argc, char* argv[]) {
                 argIdx++;
                 char *testType = argv[argIdx];
 
-		if (strncmp(testType, "c", 1) == 0) {
+		        if (strncmp(testType, "c", 1) == 0) {
                     testFunc = RunTest;
                     fprintf(stderr, "Using simple C test\n");
                 } else if (strncmp(testType, "tlb", 3) == 0) {
@@ -151,16 +122,21 @@ int main(int argc, char* argv[]) {
                 else {
                     fprintf(stderr, "Unrecognized test type: %s\n", testType);
                     fprintf(stderr, "Valid test types: c, tlb, mlp");
-		    #ifndef UNKNOWN_ARCH
-		    fprintf(stderr, ", asm, stlf, matched_stlf, dword_stlf");
-		    #endif
-		    fprintf(stderr, "\n");
-                }
-            } else if (strncmp(arg, "maxsizemb", 9) == 0) {
+		        #ifndef UNKNOWN_ARCH
+		            fprintf(stderr, ", asm, stlf, matched_stlf, 128_stlf");
+		        #ifndef BITS_32
+		            fprintf(stderr, ", dword_stlf");
+		        #endif /*BITS_32*/
+                #endif /*UNKNOWN_ARCH*/
+                    fprintf(stderr, "\n");
+                 }
+            }
+            else if (strncmp(arg, "maxsizemb", 9) == 0) {
                 argIdx++;
                 maxTestSizeMb = atoi(argv[argIdx]);
                 fprintf(stderr, "Will not exceed %u MB\n", maxTestSizeMb);
-            } else if (strncmp(arg, "iter", 4) == 0) {
+            }
+            else if (strncmp(arg, "iter", 4) == 0) {
                 argIdx++;
                 ITERATIONS = atoi(argv[argIdx]);
                 fprintf(stderr, "Base iterations: %u\n", ITERATIONS);
@@ -175,24 +151,27 @@ int main(int argc, char* argv[]) {
                     stlfLoadDistance = atoi(argv[argIdx]);
                     fprintf(stderr, "Loads will be offset by %d bytes\n", stlfLoadDistance);
             }
-//#ifndef __MINGW32__
+            //#ifndef __MINGW32__
             else if (strncmp(arg, "hugepages", 9) == 0) {
 	              hugePages = 1;
 	              fprintf(stderr, "If applicable, will use huge pages. Will allocate max memory at start, make sure system has enough memory.\n");
-	    } else if (strncmp(arg, "sizekb", 6) == 0) {
+	        } 
+            else if (strncmp(arg, "sizekb", 6) == 0) {
                 argIdx++;
                 singleSize = atoi(argv[argIdx]);
                 fprintf(stderr, "Testing %u KB only\n", singleSize);
             }
-//#endif
-#ifdef NUMA
+            //#endif /*__MINGW32__*/
+            #ifdef NUMA
             else if (strncmp(arg, "numa", 4) == 0) {
-	        numa = 1;
-		singleSize = 1048576;
-		fprintf(stderr, "Testing node to node latency. If test size is not set, it will be 1 GB\n");
-	    }
-#endif
-	    else {
+    	        numa = 1;
+                if (singleSize == 0){
+		            singleSize = 1048576;
+                }
+		        fprintf(stderr, "Testing node to node latency. If test size is not set, it will be 1 GB\n");
+	        }
+            #endif /*NUMA*/
+	        else {
                 fprintf(stderr, "Unrecognized option: %s\n", arg);
             }
         }
@@ -201,9 +180,16 @@ int main(int argc, char* argv[]) {
     if (argc == 1) {
         fprintf(stderr, "Usage: [-test <c/asm/tlb/mlp>] [-maxsizemb <max test size in MB>] [-iter <base iterations, default 100000000]\n");
     }
+    // Call Generic Runner
 
     if (hugePages) {
-        if (AllocHugePages(&hugePagesArr, &hugePagesAllocatedBytes, singleSize, testSizeCount, maxTestSizeMb) < 0) return -1;
+        size_t maxTestSizeKb = singleSize ? singleSize : default_test_sizes[testSizeCount - 1];
+        if (maxTestSizeMb){
+            maxTestSizeKb = maxTestSizeKb > maxTestSizeMb*1024 ? maxTestSizeMb*1024 : maxTestSizeKb;
+            singleSize = (singleSize && singleSize > maxTestSizeMb*1024) ? maxTestSizeMb*1024 : singleSize;
+        }
+        hugePagesArr = common_mem_malloc_special(maxTestSizeKb*1024*, 0, true, COMMON_MEM_ALLOC_NUMA_DISABLED);
+        if (hugePagesArr == NULL) return -1;
     }
 
     if (mlpTest) {
@@ -213,7 +199,7 @@ int main(int argc, char* argv[]) {
     } 
 //#ifdef NUMA
     else if (numa) {
-        NumaTestMain(hugePagesArr, hugePagesAllocatedBytes, singleSize);
+        NumaTestMain(hugePagesArr, singleSize);
     }
 //#endif
     else {
@@ -263,58 +249,33 @@ void MlpTestMain(int mlpTestVal, uint32_t testSizeCount){
     free(results);
 }
 
-void NumaTestMain(uint32_t *hugePagesArr, size_t hugePagesAllocatedBytes, uint32_t singleSize){
+void NumaTestMain(uint32_t *preallocatedArr, uint32_t testSize){
 #ifdef NUMA
-    if (numa_available() == -1) {
-        fprintf(stderr, "NUMA is not available\n");
-        return 0;
+    int numaNodeCount = common_numa_check_available_node_count();
+    if (numaNodeCount < 0) {
+        return -1;
     }
+    uint32_t *arr = preallocatedArr;
 
-    int numaNodeCount = numa_max_node() + 1;
-    if (numaNodeCount > 64) {
-        fprintf(stderr, "Too many NUMA nodes. Go home.\n");
-        return 0;
-    }
 
-    struct bitmask *nodeBitmask = numa_allocate_cpumask();
     float *crossnodeLatencies = (float *)malloc(sizeof(float) * numaNodeCount * numaNodeCount);
     memset(crossnodeLatencies, 0, sizeof(float) * numaNodeCount * numaNodeCount);
+
     for (int cpuNode = 0; cpuNode < numaNodeCount; cpuNode++) {
-        numa_node_to_cpus(cpuNode, nodeBitmask);
-        int nodeCpuCount = numa_bitmask_weight(nodeBitmask);
-        if (nodeCpuCount == 0) {
-            fprintf(stderr, "Node %d has no cores\n", cpuNode);
-            continue;
-        }
-
-        fprintf(stderr, "Node %d has %d cores\n", cpuNode, nodeCpuCount);
-        cpu_set_t cpuset;
-        memcpy(cpuset.__bits, nodeBitmask->maskp, nodeBitmask->size / 8);
-        // for (int i = 0; i < get_nprocs(); i++) 
-        //  if (numa_bitmask_isbitset(nodeBitmask, i)) CPU_SET(i, &cpuset); 
-
-        sched_setaffinity(gettid(), sizeof(cpu_set_t), &cpuset);
-
+        int ret = common_numa_set_cpu_affinity_to_node(cpuNode);
+        if (ret == -2) continue;
+        else if (ret == -1) return -1;
         for (int memNode = 0; memNode < numaNodeCount; memNode++) {
-            uint64_t nodeMask = 1UL << memNode;
-            uint32_t *arr;
-            if (hugePagesArr) {
-                fprintf(stderr, "mbind-ing pre-allocated arr, size %lu bytes\n", hugePagesAllocatedBytes);
-                long mbind_rc = mbind(hugePagesArr, hugePagesAllocatedBytes, MPOL_BIND, &nodeMask, 64, MPOL_MF_STRICT | MPOL_MF_MOVE);
-                fprintf(stderr, "mbind returned %ld\n", mbind_rc);
-                if (mbind_rc != 0) {
-                    fprintf(stderr, "errno: %d\n", errno);
-                }
-                arr = hugePagesArr;
+            if (arr == NULL){
+                arr = (uint32_t*) common_mem_malloc_special(testSize, 0, false, memNode);
+                if (arr == NULL) return -1;
             } else {
-                arr = numa_alloc_onnode(singleSize * 1024, memNode);
-                madvise(arr, singleSize * 1024, MADV_HUGEPAGE);
-            }
-        
-            float latency = testFunc(singleSize, ITERATIONS, arr);
+                common_mem_numa_move_mem_node(arr, memNode);
+            }      
+            float latency = testFunc(testSize, ITERATIONS, arr);
             crossnodeLatencies[cpuNode * numaNodeCount + memNode] = latency;
             fprintf(stderr, "CPU node %d -> mem node %d: %f ns\n", cpuNode, memNode, latency);
-            if (!hugePagesArr) numa_free(arr, singleSize * 1024);
+            if (!preallocatedArr) common_mem_special_free(arr);
         }
     }
 
@@ -628,19 +589,11 @@ void StlfTestMain(uint32_t iterations, int mode, int pageEnd, int loadDistance) 
     }
 
     // obtain a couple of cachelines, assuming 64B cacheline size
-#ifdef _WIN32
-    allocArr = (char *)_aligned_malloc(testAllocSize, testAlignment);
+    allocArr = (char *)common_mem_malloc_aligned(testAllocSize, testAlignment);
     if (allocArr == NULL) {
         fprintf(stderr, "Could not obtain aligned memory\n");
         return;
     }
-#else
-    if (0 != posix_memalign((void **)(&allocArr), testAlignment, testAllocSize)) {
-        fprintf(stderr, "Could not obtain aligned memory\n");
-        return;
-    }
-#endif
-
     arr = allocArr + testOffset;
 
     for (int storeOffset = 0; storeOffset < 64; storeOffset++)
@@ -666,10 +619,6 @@ void StlfTestMain(uint32_t iterations, int mode, int pageEnd, int loadDistance) 
         }
         printf("\n");
     }
-#ifdef _WIN32
-    _aligned_free(allocArr);
-#else
-    free(allocArr);
-#endif
+    common_mem_aligned_free(allocArr);
     return;
 }
