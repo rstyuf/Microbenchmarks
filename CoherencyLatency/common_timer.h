@@ -27,7 +27,9 @@ typedef struct timer_structure_t{
 
 typedef struct timer_result_t{
     int64_t time_dif_ms;
-    float per_iter_ns;
+    double per_iter_ns;
+    double bw_in_MB;
+;
 } TimerResult;
 
 //Usage: "TimerStructure t; common_timer_start(&t);"
@@ -51,6 +53,22 @@ inline void common_timer_end(TimerStructure* timer, TimerResult* results, unsign
         results->per_iter_ns = 1e6 * (float)results->time_dif_ms / (float)iterations_cnt;
     else
         results->per_iter_ns =  1e6 * (float)results->time_dif_ms; 
+    results->bw = 0
+}
+inline void common_timer_end_bw(TimerStructure* timer, TimerResult* results, unsigned int iterations_cnt, int bw_per_itr) {
+#if IS_WINDOWS(ENVTYPE)
+    ftime(&(timer->end));
+    results->time_dif_ms = 1000 * (timer->end.time - timer->start.time) + (timer->end.millitm - timer->start.millitm);
+#elif IS_GCC_POSIX(ENVTYPE)
+    gettimeofday(&(timer->endTv),&(timer->endTz));
+    results->time_dif_ms = 1000 * (timer->endTv.tv_sec - timer->startTv.tv_sec) + ((timer->endTv.tv_usec - timer->startTv.tv_usec) / 1000);
+#endif
+    if (iterations_cnt != 0)
+        results->per_iter_ns = 1e6 * (float)results->time_dif_ms / (float)iterations_cnt;
+    else
+        results->per_iter_ns =  1e6 * (float)results->time_dif_ms; 
+    double mbTransferred = ((iterations_cnt == 0 ? 1: iterations_cnt) * bw_per_itr)  / (double)1e6;
+    results->bw =  1000 * mbTransferred / ((double)(results->time_dif_ms)); 
 }
 
 /*
@@ -86,5 +104,13 @@ Although syntaxically it might be nicer, I worry that
   and 
   2) it's different from the other formats we're emulating.
 */
+
+TimerResult common_timer_result_difference(TimerResult A, TimerResult B) {
+    TimerResult D;
+    D.per_iter_ns = A.per_iter_ns - B.per_iter_ns;
+    D.time_dif_ms = A.time_dif_ms - B.time_dif_ms;
+    return D;
+} 
+
 
 #endif

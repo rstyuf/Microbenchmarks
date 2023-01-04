@@ -60,17 +60,17 @@ extern uint32_t latencytest(uint64_t iterations, uint64_t *arr);
 void (*stlfFunc)(uint64_t, char *) = NULL;
 #endif
 
-float RunTest(uint32_t size_kb, uint32_t iterations, uint32_t *preallocatedArr);
-float RunAsmTest(uint32_t size_kb, uint32_t iterations, uint32_t *preallocatedArr);
-float RunTlbTest(uint32_t size_kb, uint32_t iterations, uint32_t *preallocatedArr);
-float RunMlpTest(uint32_t size_kb, uint32_t iterations, uint32_t parallelism);
+TimerResult RunTest(uint32_t size_kb, uint32_t iterations, uint32_t *preallocatedArr);
+TimerResult RunAsmTest(uint32_t size_kb, uint32_t iterations, uint32_t *preallocatedArr);
+TimerResult RunTlbTest(uint32_t size_kb, uint32_t iterations, uint32_t *preallocatedArr);
+TimerResult RunMlpTest(uint32_t size_kb, uint32_t iterations, uint32_t parallelism);
 
 void MlpTestMain(int mlpTestVal, uint32_t testSizeCount);
 void StlfTestMain(uint32_t iterations, int mode, int pageEnd, int loadDistance);
 void NumaTestMain(uint32_t *hugePagesArr, size_t hugePagesAllocatedBytes, uint32_t singleSize);
 
 
-float (*testFunc)(uint32_t, uint32_t, uint32_t *) = RunTest;
+TimerResult (*testFunc)(uint32_t, uint32_t, uint32_t *) = RunTest;
 
 uint32_t ITERATIONS = 100000000;
 
@@ -231,11 +231,11 @@ int main(int argc, char* argv[]) {
 
 void MlpTestMain(int mlpTestVal, int* test_sizes, uint32_t testSizeCount){
     // allocate arr to hold results
-    float *results = (float *)malloc(testSizeCount * mlpTestVal * sizeof(float));
+    TimerResult *results = (TimerResult*)malloc(testSizeCount * mlpTestVal * sizeof(TimerResult));
     for (int size_idx = 0; size_idx < testSizeCount; size_idx++) {
         for (int parallelism = 0; parallelism < mlpTestVal; parallelism++) {
             results[size_idx * mlpTestVal + parallelism] = RunMlpTest(test_sizes[size_idx], ITERATIONS, parallelism + 1);
-            printf("%d KB, %dx parallelism, %f MB/s\n", test_sizes[size_idx], parallelism + 1, results[size_idx * mlpTestVal + parallelism]);
+            printf("%d KB, %dx parallelism, %f MB/s\n", test_sizes[size_idx], parallelism + 1, results[size_idx * mlpTestVal + parallelism].bw_in_MB);
         }
     }
 
@@ -248,7 +248,7 @@ void MlpTestMain(int mlpTestVal, int* test_sizes, uint32_t testSizeCount){
     for (int parallelism = 0; parallelism < mlpTestVal; parallelism++) {
         printf("%d", parallelism + 1);
         for (int size_idx = 0; size_idx < test_sizes[size_idx]; size_idx++) {
-            printf(",%f", results[size_idx * mlpTestVal + parallelism]);
+            printf(",%f", results[size_idx * mlpTestVal + parallelism].bw_in_MB);
         }
         printf("\n");
     }
@@ -265,8 +265,8 @@ void NumaTestMain(uint32_t *preallocatedArr, uint32_t testSize){
     uint32_t *arr = preallocatedArr;
 
 
-    float *crossnodeLatencies = (float *)malloc(sizeof(float) * numaNodeCount * numaNodeCount);
-    memset(crossnodeLatencies, 0, sizeof(float) * numaNodeCount * numaNodeCount);
+    TimerResult *crossnodeLatencies = (TimerResult *)malloc(sizeof(TimerResult) * numaNodeCount * numaNodeCount);
+    memset(crossnodeLatencies, 0, sizeof(TimerResult) * numaNodeCount * numaNodeCount);
 
     for (int cpuNode = 0; cpuNode < numaNodeCount; cpuNode++) {
         int ret = common_numa_set_cpu_affinity_to_node(cpuNode);
@@ -279,7 +279,7 @@ void NumaTestMain(uint32_t *preallocatedArr, uint32_t testSize){
             } else {
                 common_mem_numa_move_mem_node(arr, memNode);
             }      
-            float latency = testFunc(testSize, ITERATIONS, arr);
+            TimerResult latency = testFunc(testSize, ITERATIONS, arr);
             crossnodeLatencies[cpuNode * numaNodeCount + memNode] = latency;
             fprintf(stderr, "CPU node %d -> mem node %d: %f ns\n", cpuNode, memNode, latency);
             if (!preallocatedArr) common_mem_special_free(arr);
@@ -350,9 +350,9 @@ void FillPatternArr64(uint64_t *pattern_arr, uint64_t list_size, uint64_t byte_i
     }
 }
 
-float RunTest(uint32_t size_kb, uint32_t iterations, uint32_t *preallocatedArr) {
-    struct timeval startTv, endTv;
-    struct timezone startTz, endTz;
+TimerResult RunTest(uint32_t size_kb, uint32_t iterations, uint32_t *preallocatedArr) {
+    TimerStructure timer;
+    TimerResult timer_result;
     uint32_t list_size = size_kb * 1024 / 4;
     uint32_t sum = 0, current;
 
@@ -362,7 +362,8 @@ float RunTest(uint32_t size_kb, uint32_t iterations, uint32_t *preallocatedArr) 
         A = (int*)malloc(sizeof(int) * list_size);
         if (!A) {
             fprintf(stderr, "Failed to allocate memory for %u KB test\n", size_kb);
-            return 0;
+            timer_result.per_iter_ns = -1;
+            return timer_result;
         }
     } else {
         A = preallocatedArr;
@@ -373,37 +374,40 @@ float RunTest(uint32_t size_kb, uint32_t iterations, uint32_t *preallocatedArr) 
     uint32_t scaled_iterations = scale_iterations(size_kb, iterations);
 
     // Run test
-    gettimeofday(&startTv, &startTz);
+    common_timer_start(&timer);
     current = A[0];
     for (int i = 0; i < scaled_iterations; i++) {
         current = A[current];
         sum += current;
     }
-    gettimeofday(&endTv, &endTz);
-    uint64_t time_diff_ms = 1000 * (endTv.tv_sec - startTv.tv_sec) + ((endTv.tv_usec - startTv.tv_usec) / 1000);
-    float latency = 1e6 * (float)time_diff_ms / (float)scaled_iterations;
+    common_timer_end(&timer, &timer_result, scaled_iterations);
     if (preallocatedArr == NULL) free(A);
 
     if (sum == 0) printf("sum == 0 (?)\n");
-    return latency;
+    return timer_result;
 }
 
 // Tests memory level parallelism. Returns achieved BW in MB/s using specified number of
 // independent pointer chasing chains
-float RunMlpTest(uint32_t size_kb, uint32_t iterations, uint32_t parallelism) {
-    struct timeval startTv, endTv;
-    struct timezone startTz, endTz;
+TimerResult RunMlpTest(uint32_t size_kb, uint32_t iterations, uint32_t parallelism) {
+    TimerStructure timer;
+    TimerResult timer_result;
     uint32_t list_size = size_kb * 1024 / 4;
     uint32_t sum = 0, current;
 
-    if (parallelism < 1) return 0;
+    if (parallelism < 1) {
+            fprintf(stderr, "No use in MLP test with no parallelism\n");
+            timer_result.per_iter_ns = 0;
+            return timer_result;
+        }
 
     // Fill list to create random access pattern, and hold temporary data
     int* A = (int*)malloc(sizeof(int) * list_size);
     int *offsets = (int*)malloc(sizeof(int) * parallelism);
     if (!A || !offsets) {
         fprintf(stderr, "Failed to allocate memory for %u KB test\n", size_kb);
-        return 0;
+        timer_result.per_iter_ns = -1;
+        return timer_result;
     }
 
     FillPatternArr(A, list_size, CACHELINE_SIZE);
@@ -411,32 +415,29 @@ float RunMlpTest(uint32_t size_kb, uint32_t iterations, uint32_t parallelism) {
     uint32_t scaled_iterations = scale_iterations(size_kb, iterations) / parallelism;
 
     // Run test
-    gettimeofday(&startTv, &startTz);
+    common_timer_start(&timer);
     for (int i = 0; i < scaled_iterations; i++) {
         for (int j = 0; j < parallelism; j++)
         {
             offsets[j] = A[offsets[j]];
         }
     }
-    gettimeofday(&endTv, &endTz);
-    uint64_t time_diff_ms = 1000 * (endTv.tv_sec - startTv.tv_sec) + ((endTv.tv_usec - startTv.tv_usec) / 1000);
-    double mbTransferred = (scaled_iterations * parallelism * sizeof(int))  / (double)1e6;
-    float bw = 1000 * mbTransferred / (double)time_diff_ms;
-
+    common_timer_end_bw(&timer, &timer_result, scaled_iterations, (parallelism * sizeof(int)));
+    
     sum = 0;
     for (int i = 0; i < parallelism; i++) sum += offsets[i];
     if (sum == 0) printf("sum == 0 (?)\n");
 
     free(A);
     free (offsets);
-    return bw;
+    return timer_result;
 }
 
 
 #ifndef UNKNOWN_ARCH
-float RunAsmTest(uint32_t size_kb, uint32_t iterations, uint32_t *preallocatedArr) {
-    struct timeval startTv, endTv;
-    struct timezone startTz, endTz;
+TimerResult RunAsmTest(uint32_t size_kb, uint32_t iterations, uint32_t *preallocatedArr) {
+    TimerStructure timer;
+    TimerResult timer_result;
     uint64_t list_size = size_kb * 1024 / POINTER_SIZE; // using 32-bit pointers
     uint32_t sum = 0, current;
 
@@ -446,7 +447,8 @@ float RunAsmTest(uint32_t size_kb, uint32_t iterations, uint32_t *preallocatedAr
         A = (PtrSysb *)malloc(POINTER_SIZE * list_size);
         if (!A) {
             fprintf(stderr, "Failed to allocate memory for %lu KB test\n", size_kb);
-            return 0;
+            timer_result.per_iter_ns = -1;
+            return timer_result;
 	      }
     } else {
         A = (PtrSysb *)preallocatedArr;
@@ -465,24 +467,22 @@ float RunAsmTest(uint32_t size_kb, uint32_t iterations, uint32_t *preallocatedAr
     uint32_t scaled_iterations = scale_iterations(size_kb, iterations);
 
     // Run test
-    gettimeofday(&startTv, &startTz);
+    common_timer_start(&timer);
     sum = latencytest(scaled_iterations, A);
-    gettimeofday(&endTv, &endTz);
-    uint64_t time_diff_ms = 1000 * (endTv.tv_sec - startTv.tv_sec) + ((endTv.tv_usec - startTv.tv_usec) / 1000);
-    float latency = 1e6 * (float)time_diff_ms / (float)scaled_iterations;
+    common_timer_end(&timer, &timer_result, scaled_iterations);
     if (preallocatedArr == NULL) free(A);
 
     if (sum == 0) printf("sum == 0 (?)\n");
-    return latency;
+    return timer_result;
 }
 #endif
 
 // Tries to isolate virtual to physical address translation latency by accessing
 // one element per page, and checking latency difference between that and hitting the same amount of "hot"
 // cachelines using a normal latency test.. 4 KB pages are assumed.
-float RunTlbTest(uint32_t size_kb, uint32_t iterations, uint32_t *preallocatedArr) {
-    struct timeval startTv, endTv;
-    struct timezone startTz, endTz;
+TimerResult RunTlbTest(uint32_t size_kb, uint32_t iterations, uint32_t *preallocatedArr) {
+    TimerStructure timer;
+    TimerResult timer_result;
     uint32_t element_count = size_kb / 4;
     uint32_t list_size = size_kb * 1024 / 4;
     uint32_t sum = 0, current;
@@ -495,7 +495,8 @@ float RunTlbTest(uint32_t size_kb, uint32_t iterations, uint32_t *preallocatedAr
     uint32_t *pattern_arr = (uint32_t*)malloc(sizeof(uint32_t) * element_count);
     if (!pattern_arr) {
         fprintf(stderr, "Failed to allocate memory for %u KB test (offset array)\n", size_kb);
-        return 0;
+        timer_result.per_iter_ns = -1;
+        return timer_result;
     }
 
     for (int i = 0; i < element_count; i++) {
@@ -539,16 +540,14 @@ float RunTlbTest(uint32_t size_kb, uint32_t iterations, uint32_t *preallocatedAr
     uint32_t scaled_iterations = scale_iterations(size_kb, iterations);
 
     // Run test
-    gettimeofday(&startTv, &startTz);
+    common_timer_start(&timer);
     current = A[0];
     for (int i = 0; i < scaled_iterations; i++) {
         current = A[current];
         sum += current;
         //if (size_kb == 48) fprintf(stderr, "idx: %u\n", current);
     }
-    gettimeofday(&endTv, &endTz);
-    uint64_t time_diff_ms = 1000 * (endTv.tv_sec - startTv.tv_sec) + ((endTv.tv_usec - startTv.tv_usec) / 1000);
-    float latency = 1e6 * (float)time_diff_ms / (float)scaled_iterations;
+    common_timer_end(&timer, &timer_result, scaled_iterations);
     if (preallocatedArr == NULL) free(A);
 
     if (element_count > 1 && sum == 0) printf("sum == 0 (?)\n");
@@ -556,10 +555,10 @@ float RunTlbTest(uint32_t size_kb, uint32_t iterations, uint32_t *preallocatedAr
     // Get a reference timing for the size, to isolate TLB latency from cache latency
     uint32_t memoryUsedKb = (element_count * CACHELINE_SIZE) / 1024;
     if (memoryUsedKb == 0) memoryUsedKb = 1;
-    float cacheLatency = RunTest(memoryUsedKb, iterations, preallocatedArr);
+    TimerResult cacheLatency = RunTest(memoryUsedKb, iterations, preallocatedArr);
 
     //fprintf(stderr, "Memory used - %u KB, latency: %f, ref latency: %f\n", memoryUsedKb, latency, cacheLatency);
-    return latency - cacheLatency;
+    return common_timer_result_difference(timer_result, cacheLatency);
 }
 
 // Run store to load forwarding test, as described in https://blog.stuffedcow.net/2014/01/x86-memory-disambiguation/
@@ -568,11 +567,11 @@ float RunTlbTest(uint32_t size_kb, uint32_t iterations, uint32_t *preallocatedAr
 // loadDistance = how far ahead to push the load (for testing aliasing)
 // cannot set both pageEnd and loadDistance
 void StlfTestMain(uint32_t iterations, int mode, int pageEnd, int loadDistance) {
-    struct timeval startTv, endTv;
-    struct timezone startTz, endTz;
+    TimerStructure timer;
+    TimerResult timer_result;
     uint64_t time_diff_ms;
-    float latency;
-    float stlfResults[64][64];
+    TimerResult latency;
+    TimerResult stlfResults[64][64];
     char *arr; 
     char *allocArr;
 
@@ -592,7 +591,8 @@ void StlfTestMain(uint32_t iterations, int mode, int pageEnd, int loadDistance) 
     allocArr = (char *)common_mem_malloc_aligned(testAllocSize, testAlignment);
     if (allocArr == NULL) {
         fprintf(stderr, "Could not obtain aligned memory\n");
-        return;
+        //timer_result.per_iter_ns = -1;
+        return; // timer_result;
     }
     arr = allocArr + testOffset;
 
@@ -600,12 +600,9 @@ void StlfTestMain(uint32_t iterations, int mode, int pageEnd, int loadDistance) 
         for (int loadOffset = 0; loadOffset < 64; loadOffset++) {
             ((uint32_t *)(arr))[0] = storeOffset;
             ((uint32_t *)(arr))[1] = loadOffset + loadDistance;
-            gettimeofday(&startTv, &startTz);
+            common_timer_start(&timer);
             stlfFunc(iterations, arr);
-            gettimeofday(&endTv, &endTz);
-            time_diff_ms = 1e6 * (endTv.tv_sec - startTv.tv_sec) + (endTv.tv_usec - startTv.tv_usec);
-            latency = 1e3 * (float) time_diff_ms / (float) iterations;
-            stlfResults[storeOffset][loadOffset] = latency;
+            common_timer_end(&timer, &(stlfResults[storeOffset][loadOffset]), iterations);
             fprintf(stderr, "Store offset %d, load offset %d: %f ns\n", storeOffset, loadOffset, latency);
         }
 
@@ -615,7 +612,7 @@ void StlfTestMain(uint32_t iterations, int mode, int pageEnd, int loadDistance) 
     for (int storeOffset = 0; storeOffset < 64; storeOffset++) {
         printf("%d", storeOffset);
         for (int loadOffset = 0; loadOffset < 64; loadOffset++) {
-            printf(",%f", stlfResults[storeOffset][loadOffset]);
+            printf(",%f", stlfResults[storeOffset][loadOffset].per_iter_ns);
         }
         printf("\n");
     }
