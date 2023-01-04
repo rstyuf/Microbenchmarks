@@ -65,9 +65,9 @@ TimerResult RunAsmTest(uint32_t size_kb, uint32_t iterations, uint32_t *prealloc
 TimerResult RunTlbTest(uint32_t size_kb, uint32_t iterations, uint32_t *preallocatedArr);
 TimerResult RunMlpTest(uint32_t size_kb, uint32_t iterations, uint32_t parallelism);
 
-void MlpTestMain(int mlpTestVal, uint32_t testSizeCount);
+void MlpTestMain(int mlpTestVal, int* test_sizes, uint32_t testSizeCount);
 void StlfTestMain(uint32_t iterations, int mode, int pageEnd, int loadDistance);
-void NumaTestMain(uint32_t *hugePagesArr, size_t hugePagesAllocatedBytes, uint32_t singleSize);
+void NumaTestMain(uint32_t *preallocatedArr, uint32_t testSize);
 
 
 TimerResult (*testFunc)(uint32_t, uint32_t, uint32_t *) = RunTest;
@@ -195,7 +195,7 @@ int main(int argc, char* argv[]) {
             maxTestSizeKb = maxTestSizeKb > maxTestSizeMb*1024 ? maxTestSizeMb*1024 : maxTestSizeKb;
             singleSize = (singleSize && singleSize > maxTestSizeMb*1024) ? maxTestSizeMb*1024 : singleSize;
         }
-        hugePagesArr = common_mem_malloc_special(maxTestSizeKb*1024, 0, true, COMMON_MEM_ALLOC_NUMA_DISABLED);
+        hugePagesArr = (uint32_t* ) common_mem_malloc_special(maxTestSizeKb*1024, 0, true, COMMON_MEM_ALLOC_NUMA_DISABLED);
         if (hugePagesArr == NULL) return -1;
     }
 
@@ -214,14 +214,14 @@ int main(int argc, char* argv[]) {
         printf("Region,Latency (ns)\n");
             for (int i = 0; i < testSizeCount; i++) {
                 if ((maxTestSizeMb == 0) || (test_sizes[i] <= maxTestSizeMb * 1024))
-                    printf("%d,%f\n", test_sizes[i], testFunc(test_sizes[i], ITERATIONS, hugePagesArr));
+                    printf("%d,%f\n", test_sizes[i], testFunc(test_sizes[i], ITERATIONS, hugePagesArr).per_iter_ns);
                 else {
                     fprintf(stderr, "Test size %u KB exceeds max test size of %u KB\n", test_sizes[i], maxTestSizeMb * 1024);
                     break;
                 }
             }
         } else {
-            printf("%d,%f\n", singleSize, testFunc(singleSize, ITERATIONS, hugePagesArr));
+            printf("%d,%f\n", singleSize, testFunc(singleSize, ITERATIONS, hugePagesArr).per_iter_ns);
         }
     }
 
@@ -294,7 +294,7 @@ void NumaTestMain(uint32_t *preallocatedArr, uint32_t testSize){
     for (int cpuNode = 0; cpuNode < numaNodeCount; cpuNode++) {
         printf("%d", cpuNode);
         for (int memNode = 0; memNode < numaNodeCount; memNode++) {
-            printf(",%f", crossnodeLatencies[cpuNode * numaNodeCount + memNode]);
+            printf(",%f", crossnodeLatencies[cpuNode * numaNodeCount + memNode].per_iter_ns);
         }
 
         printf("\n");
@@ -616,6 +616,6 @@ void StlfTestMain(uint32_t iterations, int mode, int pageEnd, int loadDistance) 
         }
         printf("\n");
     }
-    common_mem_aligned_free(allocArr);
+    common_mem_aligned_free( (Ptr64b*) allocArr);
     return;
 }

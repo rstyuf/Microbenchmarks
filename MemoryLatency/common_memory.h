@@ -91,7 +91,26 @@ Ptr64b* common_mem_malloc_special(size_t size_to_alloc, size_t alignment, bool a
         allocations[allocation_record_index].req_hugepage = attempt_hugepage;
         return alloc_ptr;
     }
-    if (numa_memory_node >= 0) {
+    if (numa_memory_node < 0) {
+        alloc_ptr = (Ptr64b*) VirtualAlloc(NULL,
+                                            size_to_alloc,
+                                            allocationType, 
+                                            PAGE_READWRITE);
+        if (alloc_ptr == NULL)
+        {
+            fprintf(stderr, "Failed to get memory via VirtualAlloc: %d\n", GetLastError());
+            return alloc_ptr;
+        }
+        allocations[allocation_record_index].ptr = alloc_ptr; 
+        allocations[allocation_record_index].type = ALLOC_TYPE_WIN_VIRTUAL_ALLOC;
+        allocations[allocation_record_index].len = size_to_alloc;
+        allocations[allocation_record_index].req_alignment = alignment;
+        allocations[allocation_record_index].req_hugepage = attempt_hugepage;
+        return alloc_ptr;
+    }
+    #ifdef NUMA
+     else {
+
         alloc_ptr = (Ptr64b*) VirtualAllocExNuma(GetCurrentProcess(),
                                                  NULL,
                                                  size_to_alloc,
@@ -109,23 +128,8 @@ Ptr64b* common_mem_malloc_special(size_t size_to_alloc, size_t alignment, bool a
         allocations[allocation_record_index].req_alignment = alignment;
         allocations[allocation_record_index].req_hugepage = attempt_hugepage;
         return alloc_ptr;
-    } else {
-        alloc_ptr = (Ptr64b*) VirtualAlloc(NULL,
-                                            size_to_alloc,
-                                            allocationType, 
-                                            PAGE_READWRITE);
-        if (alloc_ptr == NULL)
-        {
-            fprintf(stderr, "Failed to get memory via VirtualAlloc: %d\n", GetLastError());
-            return alloc_ptr;
-        }
-        allocations[allocation_record_index].ptr = alloc_ptr; 
-        allocations[allocation_record_index].type = ALLOC_TYPE_WIN_VIRTUAL_ALLOC;
-        allocations[allocation_record_index].len = size_to_alloc;
-        allocations[allocation_record_index].req_alignment = alignment;
-        allocations[allocation_record_index].req_hugepage = attempt_hugepage;
-        return alloc_ptr;
     }
+    #endif /*NUMA*/
     #elif IS_GCC_POSIX(ENVTYPE)
 
     size_t hugePageSize = 1 << 21;
