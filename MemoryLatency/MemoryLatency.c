@@ -1,24 +1,28 @@
-#define _GNU_SOURCE
+#include "common_common.h"
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <string.h>
 #include <limits.h>
 #include <math.h>
-#include <sys/time.h>
-#include <unistd.h>
 
-#ifndef __MINGW32__
-#include <sys/mman.h>
-#endif
+#include "common_timer.h"
+#include "common_threading.h"
+#include "common_memory.h"
 
-#ifdef NUMA
-#include <numa.h>
-#include <numaif.h>
-#include <sys/sysinfo.h>
-#endif
-#include <errno.h>
-#include <sched.h>
+// #include <sys/time.h>
+// #include <unistd.h>
+
+
+
+// #ifdef NUMA
+// #include <numa.h>
+// #include <numaif.h>
+// #include <sys/sysinfo.h>
+// #endif
+// #include <errno.h>
+// #include <sched.h>
 
 // TODO: possibly get this programatically
 #define PAGE_SIZE 4096
