@@ -74,6 +74,7 @@ int main(int argc, char* argv[]) {
     uint32_t maxTestSizeMb = 0;
     uint32_t singleSize = 0;
     uint32_t testSizeCount = sizeof(default_test_sizes) / sizeof(int);
+    int* test_sizes = default_test_sizes;
     int mlpTest = 0;  // if > 0, run MLP test with (value) levels of parallelism max
     int stlf = 0, hugePages = 0;
     int stlfPageEnd = 0, numa = 0, stlfLoadDistance = 0;
@@ -162,15 +163,17 @@ int main(int argc, char* argv[]) {
                 fprintf(stderr, "Testing %u KB only\n", singleSize);
             }
             //#endif /*__MINGW32__*/
-            #ifdef NUMA
             else if (strncmp(arg, "numa", 4) == 0) {
+            #ifdef NUMA
     	        numa = 1;
                 if (singleSize == 0){
 		            singleSize = 1048576;
                 }
 		        fprintf(stderr, "Testing node to node latency. If test size is not set, it will be 1 GB\n");
-	        }
+            #else
+            	fprintf(stderr, "NUMA is unsupported in this version\n");
             #endif /*NUMA*/
+	        }
 	        else {
                 fprintf(stderr, "Unrecognized option: %s\n", arg);
             }
@@ -183,17 +186,17 @@ int main(int argc, char* argv[]) {
     // Call Generic Runner
 
     if (hugePages) {
-        size_t maxTestSizeKb = singleSize ? singleSize : default_test_sizes[testSizeCount - 1];
+        size_t maxTestSizeKb = singleSize ? singleSize : test_sizes[testSizeCount - 1];
         if (maxTestSizeMb){
             maxTestSizeKb = maxTestSizeKb > maxTestSizeMb*1024 ? maxTestSizeMb*1024 : maxTestSizeKb;
             singleSize = (singleSize && singleSize > maxTestSizeMb*1024) ? maxTestSizeMb*1024 : singleSize;
         }
-        hugePagesArr = common_mem_malloc_special(maxTestSizeKb*1024*, 0, true, COMMON_MEM_ALLOC_NUMA_DISABLED);
+        hugePagesArr = common_mem_malloc_special(maxTestSizeKb*1024, 0, true, COMMON_MEM_ALLOC_NUMA_DISABLED);
         if (hugePagesArr == NULL) return -1;
     }
 
     if (mlpTest) {
-        MlpTestMain(mlpTest, testSizeCount);
+        MlpTestMain(mlpTest, test_sizes, testSizeCount);
     } else if (stlf) {
         StlfTestMain(ITERATIONS, stlf, stlfPageEnd, stlfLoadDistance);
     } 
@@ -206,10 +209,10 @@ int main(int argc, char* argv[]) {
         if (singleSize == 0) {
         printf("Region,Latency (ns)\n");
             for (int i = 0; i < testSizeCount; i++) {
-                if ((maxTestSizeMb == 0) || (default_test_sizes[i] <= maxTestSizeMb * 1024))
-                    printf("%d,%f\n", default_test_sizes[i], testFunc(default_test_sizes[i], ITERATIONS, hugePagesArr));
+                if ((maxTestSizeMb == 0) || (test_sizes[i] <= maxTestSizeMb * 1024))
+                    printf("%d,%f\n", test_sizes[i], testFunc(test_sizes[i], ITERATIONS, hugePagesArr));
                 else {
-                    fprintf(stderr, "Test size %u KB exceeds max test size of %u KB\n", default_test_sizes[i], maxTestSizeMb * 1024);
+                    fprintf(stderr, "Test size %u KB exceeds max test size of %u KB\n", test_sizes[i], maxTestSizeMb * 1024);
                     break;
                 }
             }
@@ -222,25 +225,25 @@ int main(int argc, char* argv[]) {
 }
 
 
-void MlpTestMain(int mlpTestVal, uint32_t testSizeCount){
+void MlpTestMain(int mlpTestVal, int* test_sizes, uint32_t testSizeCount){
     // allocate arr to hold results
     float *results = (float *)malloc(testSizeCount * mlpTestVal * sizeof(float));
     for (int size_idx = 0; size_idx < testSizeCount; size_idx++) {
         for (int parallelism = 0; parallelism < mlpTestVal; parallelism++) {
-            results[size_idx * mlpTestVal + parallelism] = RunMlpTest(default_test_sizes[size_idx], ITERATIONS, parallelism + 1);
-            printf("%d KB, %dx parallelism, %f MB/s\n", default_test_sizes[size_idx], parallelism + 1, results[size_idx * mlpTestVal + parallelism]);
+            results[size_idx * mlpTestVal + parallelism] = RunMlpTest(test_sizes[size_idx], ITERATIONS, parallelism + 1);
+            printf("%d KB, %dx parallelism, %f MB/s\n", test_sizes[size_idx], parallelism + 1, results[size_idx * mlpTestVal + parallelism]);
         }
     }
 
     for (int size_idx = 0; size_idx < testSizeCount; size_idx++) {
-        printf(",%d", default_test_sizes[size_idx]);
+        printf(",%d", test_sizes[size_idx]);
     }
 
     printf("\n");
 
     for (int parallelism = 0; parallelism < mlpTestVal; parallelism++) {
         printf("%d", parallelism + 1);
-        for (int size_idx = 0; size_idx < default_test_sizes[size_idx]; size_idx++) {
+        for (int size_idx = 0; size_idx < test_sizes[size_idx]; size_idx++) {
             printf(",%f", results[size_idx * mlpTestVal + parallelism]);
         }
         printf("\n");
@@ -425,13 +428,6 @@ float RunMlpTest(uint32_t size_kb, uint32_t iterations, uint32_t parallelism) {
     return bw;
 }
 
-#ifdef __i686
-#define POINTER_SIZE 4
-#define POINTER_INT uint32_t
-#else
-#define POINTER_SIZE 8
-#define POINTER_INT uint64_t
-#endif
 
 #ifndef UNKNOWN_ARCH
 float RunAsmTest(uint32_t size_kb, uint32_t iterations, uint32_t *preallocatedArr) {
@@ -441,20 +437,20 @@ float RunAsmTest(uint32_t size_kb, uint32_t iterations, uint32_t *preallocatedAr
     uint32_t sum = 0, current;
 
     // Fill list to create random access pattern
-    POINTER_INT *A;
+    PtrSysb *A;
     if (preallocatedArr == NULL) {
-        A = (POINTER_INT *)malloc(POINTER_SIZE * list_size);
+        A = (PtrSysb *)malloc(POINTER_SIZE * list_size);
         if (!A) {
             fprintf(stderr, "Failed to allocate memory for %lu KB test\n", size_kb);
             return 0;
 	      }
     } else {
-        A = (POINTER_INT *)preallocatedArr;
+        A = (PtrSysb *)preallocatedArr;
     }
 
     memset(A, 0, POINTER_SIZE * list_size);
 
-#ifdef __i686
+#ifdef BITS_32
     FillPatternArr(A, list_size, CACHELINE_SIZE);
 #else
     FillPatternArr64(A, list_size, CACHELINE_SIZE);
