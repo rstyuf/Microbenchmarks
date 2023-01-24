@@ -380,7 +380,9 @@ TimerResult RunTest(uint32_t size_kb, uint32_t iterations, uint32_t *preallocate
         current = A[current];
         sum += current;
     }
-    common_timer_end(&timer, &timer_result, scaled_iterations);
+    common_timer_end(&timer, &timer_result, iterations);
+    common_timer_result_process_iterations(&timer_result, scaled_iterations);
+
     if (preallocatedArr == NULL) free(A);
 
     if (sum == 0) printf("sum == 0 (?)\n");
@@ -422,7 +424,8 @@ TimerResult RunMlpTest(uint32_t size_kb, uint32_t iterations, uint32_t paralleli
             offsets[j] = A[offsets[j]];
         }
     }
-    common_timer_end_bw(&timer, &timer_result, scaled_iterations, (parallelism * sizeof(int)));
+    common_timer_end(&timer, &timer_result, scaled_iterations, (parallelism * sizeof(int)));
+    common_timer_result_process_bw(&timer_result, scaled_iterations, ((scaled_iterations == 0 ? 1: scaled_iterations) * (parallelism * sizeof(int)))  / (double)1e6);
     
     sum = 0;
     for (int i = 0; i < parallelism; i++) sum += offsets[i];
@@ -469,7 +472,9 @@ TimerResult RunAsmTest(uint32_t size_kb, uint32_t iterations, uint32_t *prealloc
     // Run test
     common_timer_start(&timer);
     sum = latencytest(scaled_iterations, A);
-    common_timer_end(&timer, &timer_result, scaled_iterations);
+    common_timer_end(&timer, &timer_result);
+    common_timer_result_process_iterations(&timer_result, scaled_iterations);
+
     if (preallocatedArr == NULL) free(A);
 
     if (sum == 0) printf("sum == 0 (?)\n");
@@ -547,7 +552,8 @@ TimerResult RunTlbTest(uint32_t size_kb, uint32_t iterations, uint32_t *prealloc
         sum += current;
         //if (size_kb == 48) fprintf(stderr, "idx: %u\n", current);
     }
-    common_timer_end(&timer, &timer_result, scaled_iterations);
+    common_timer_end(&timer, &timer_result);
+    common_timer_result_process_iterations(&timer_result, scaled_iterations);
     if (preallocatedArr == NULL) free(A);
 
     if (element_count > 1 && sum == 0) printf("sum == 0 (?)\n");
@@ -602,7 +608,8 @@ void StlfTestMain(uint32_t iterations, int mode, int pageEnd, int loadDistance) 
             ((uint32_t *)(arr))[1] = loadOffset + loadDistance;
             common_timer_start(&timer);
             stlfFunc(iterations, arr);
-            common_timer_end(&timer, &(stlfResults[storeOffset][loadOffset]), iterations);
+            common_timer_end(&timer, &(stlfResults[storeOffset][loadOffset]));
+            common_timer_result_process_iterations(&timer_result, iterations);
             fprintf(stderr, "Store offset %d, load offset %d: %f ns\n", storeOffset, loadOffset, latency);
         }
 
