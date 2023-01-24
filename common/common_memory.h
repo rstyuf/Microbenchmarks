@@ -63,6 +63,58 @@ void common_mem_aligned_free(Ptr64b* ptr){
     #endif
 }
 
+#if IS_WINDOWS(ENVTYPE)
+bool _common_mem_get_privilege_done = false;
+bool common_mem_GetPrivilege()
+{
+    if (_common_mem_get_privilege_done) return true;
+    HANDLE           hToken;
+    TOKEN_PRIVILEGES tp;
+    BOOL             status;
+    DWORD            error;
+
+    // open process token
+    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &hToken))
+    {
+        fprintf(stderr, "OpenProcessToken failed: %d\n", GetLastError());
+        return false;
+    }
+
+    // get the luid
+    if (!LookupPrivilegeValue(NULL, TEXT("SeLockMemoryPrivilege"), &tp.Privileges[0].Luid))
+    {
+        fprintf(stderr, "Could not get luid: %d\n", GetLastError());
+        return false;
+    }
+
+    // enable privilege
+    tp.PrivilegeCount = 1;
+    tp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+    status = AdjustTokenPrivileges(hToken, FALSE, &tp, 0, (PTOKEN_PRIVILEGES)NULL, 0);
+
+    // It is possible for AdjustTokenPrivileges to return TRUE and still not succeed.
+    // So always check for the last error value.
+    error = GetLastError();
+    if (!status || (error != ERROR_SUCCESS))
+    {
+        fprintf(stderr, "AdjustTokenPrivileges failed with status %d, error %d\n", status, error);
+        return false;
+    }
+
+    // close the handle
+    if (!CloseHandle(hToken))
+    {
+        fprintf(stderr, "CloseHandle failed: %d\n", GetLastError());
+        return false;
+    }
+
+    fprintf(stderr, "Got SeLockMemoryPrivilege\n");
+    _common_mem_get_privilege_done = true;
+    return true;
+}
+#endif /*IS_WINDOWS*/
+
+
 Ptr64b* common_mem_malloc_special(size_t size_to_alloc, size_t alignment, bool attempt_hugepage, int numa_memory_node){ // numa_memory_node<0 disables any numa specialization.
     int allocation_record_index = 0;
     for (; allocation_record_index < MAX_ALLOCATIONS_PER_RUN; allocation_record_index){
@@ -76,6 +128,7 @@ Ptr64b* common_mem_malloc_special(size_t size_to_alloc, size_t alignment, bool a
 
     DWORD allocationType = MEM_RESERVE | MEM_COMMIT;
     if (attempt_hugepage) {
+        common_mem_GetPrivilege();
         allocationType |= MEM_LARGE_PAGES;
         size_t hugePageSize = 1 << 21;
         size_to_alloc = (((size_to_alloc - 1) / hugePageSize) + 1) * hugePageSize; // rounded up to nearest hugepage

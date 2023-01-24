@@ -1,11 +1,6 @@
-#include "common_common.h"
+#include "../common/common_common.h"
 #include <stdio.h>
 #include <stdint.h>
-//#include <intrin.h>
-//#include <windows.h>
-#include "common_timer.h"
-#include "common_threading.h"
-#include "common_memory.h"
 
 #define ITERATIONS 10000000;
 

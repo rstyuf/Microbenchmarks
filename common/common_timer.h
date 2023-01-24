@@ -137,7 +137,7 @@ Although syntaxically it might be nicer, I worry that
 
 TimerResult common_timer_result_difference(TimerResult A, TimerResult B) {
     TimerResult D;
-    D.per_iter_ns = A.per_iter_ns - B.per_iter_ns;
+    D.result = A.result - B.result;
     D.time_dif_ms = A.time_dif_ms - B.time_dif_ms;
     return D;
 } 
