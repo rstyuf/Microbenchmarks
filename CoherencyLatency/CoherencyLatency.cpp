@@ -9,8 +9,8 @@
 
 #define ITERATIONS 10000000;
 
-TimerResult RunTest(unsigned int processor1, unsigned int processor2, uint64_t iter);
-TimerResult RunOwnedTest(unsigned int processor1, unsigned int processor2, uint64_t iter);
+TimerResult RunCoherencyBounceTest(unsigned int processor1, unsigned int processor2, uint64_t iter, Ptr64b* addr);
+TimerResult RunCoherencyOwnedTest(unsigned int processor1, unsigned int processor2, uint64_t iter, Ptr64b* addr);
 int LatencyTestThread(void *param);
 int ReadLatencyTestThread(void *param);
 
@@ -30,7 +30,7 @@ int main(int argc, char *argv[]) {
     TimerResult **latencies;
     uint64_t iter = ITERATIONS;
     int offsets = 1;
-    TimerResult (*test)(unsigned int, unsigned int, uint64_t) = RunTest;
+    TimerResult (*test)(unsigned int, unsigned int, uint64_t, Ptr64b*) = RunCoherencyBounceTest;
 
     for (int argIdx = 1; argIdx < argc; argIdx++) {
         if (*(argv[argIdx]) == '-') {
@@ -44,7 +44,7 @@ int main(int argc, char *argv[]) {
                 fprintf(stderr, "Bouncy\n");
             }
             else if (strncmp(arg, "owned", 5) == 0) { //todo: Make Case Insensitive (ie _strnicmp on Windows)
-                test = RunOwnedTest;
+                test = RunCoherencyOwnedTest;
                 fprintf(stderr, "Using separate cache lines for each thread to write to\n");
             }
             else if (strncmp(arg, "offset", 6) == 0) { //todo: Make Case Insensitive (ie _strnicmp on Windows)
@@ -55,7 +55,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    bouncyBase = (Ptr64b*)common_mem_malloc_aligned(64 * (offsets + (test == RunOwnedTest)? 1:0), 4096); 
+    bouncyBase = (Ptr64b*)common_mem_malloc_aligned(64 * (offsets + (test == RunCoherencyOwnedTest)? 1:0), 4096); 
     bouncy = bouncyBase;
     if (bouncy == NULL) {
         fprintf(stderr, "Could not allocate aligned mem\n");
@@ -70,7 +70,7 @@ int main(int argc, char *argv[]) {
     }
     memset(latencies, 0, sizeof(TimerResult*) * offsets); //? Zeroing the pointers? Why? TODO
     TimerResult non_result;
-    non_result.per_iter_ns = 0;
+    non_result.result = 0;
     for (int offsetIdx = 0; offsetIdx < offsets; offsetIdx++) {
         bouncy = (Ptr64b*)((char*)bouncyBase + offsetIdx * 64);
         latencies[offsetIdx] = (TimerResult*)malloc(sizeof(TimerResult) * numProcs * numProcs);
@@ -80,7 +80,7 @@ int main(int argc, char *argv[]) {
         // technically can skip the other way around (start j = i + 1) but meh
         for (int i = 0;i < numProcs; i++) {
             for (int j = 0;j < numProcs; j++) {
-                latenciesPtr[j + i * numProcs] = i == j ? non_result : test(i, j, iter);
+                latenciesPtr[j + i * numProcs] = i == j ? non_result : test(i, j, iter, bouncy);
             }
         }
     }
@@ -94,7 +94,7 @@ int main(int argc, char *argv[]) {
             for (int j = 0;j < numProcs; j++) {
                 if (j != 0) printf(",");
                 if (j == i) printf("x");
-                else printf("%f", latenciesPtr[j + i * numProcs].per_iter_ns); //TODO replace with something generic that allows printing more details if we want. (ie, MSR counts)
+                else printf("%f", latenciesPtr[j + i * numProcs].result); //TODO replace with something generic that allows printing more details if we want. (ie, MSR counts)
             }
             printf("\n");
         }
@@ -114,35 +114,52 @@ int main(int argc, char *argv[]) {
 /// <param name="processor1">processor number 1</param>
 /// <param name="processor2">processor number 2</param>
 /// <param name="iter">Number of iterations</param>
-/// <param name="bouncy">aligned mem to bounce around</param>
+/// <param name="addr_base">aligned mem to bounce around</param>
 /// <returns>latency per iteration in ns</returns>
-TimerResult RunTest(unsigned int processor1, unsigned int processor2, uint64_t iter) {
+TimerResult RunCoherencyBounceTest(unsigned int processor1, unsigned int processor2, uint64_t iter, Ptr64b* addr_base) {
+    TimeThreadData timerthreads[2] = {0};
     LatencyData lat1, lat2;
     TimerResult latency;
+    TimerStructure timer;
 
-    *bouncy = 0;
+    *addr_base = 0;
     lat1.iterations = iter;
     lat1.start = 1;
-    lat1.target = bouncy;
+    lat1.target = addr_base;
+    timerthreads[0].threadFunc = LatencyTestThread;
+    timerthreads[0].pArg = (void*) &lat1;
+    timerthreads[0].processorIdx = processor1;
+
     lat2.iterations = iter;
     lat2.start = 2;
-    lat2.target = bouncy;
+    lat2.target = addr_base;
+    timerthreads[1].threadFunc = LatencyTestThread;
+    timerthreads[1].pArg = (void*) &lat2;
+    timerthreads[1].processorIdx = processor2;
 
-    latency = TimeThreads(processor1, processor2, iter, (void*)&lat1, (void*)&lat2, LatencyTestThread);
+    latency = TimeThreads(timerthreads, 2, &timer);
+    common_timer_result_process_iterations(&latency, iter *2);
+    fprintf(stderr, "%d to %d: %f ns\n", processor1, processor2, latency.result*2 ); //Lat Multiplied by 2 to get previous behavior
     return latency;
+
 }
 
-TimerResult RunOwnedTest(unsigned int processor1, unsigned int processor2, uint64_t iter) {
+TimerResult RunCoherencyOwnedTest(unsigned int processor1, unsigned int processor2, uint64_t iter, Ptr64b* addr_base) {
+    
+    TimeThreadData timerthreads[2] = {0};
     LatencyData lat1, lat2;
     Ptr64b* target1, * target2;
     TimerResult latency;
-
-    // drop them on different cache lines
-    target1 = bouncy; // this is ok because we allocate one more cache line than neceesary if owned
-    target2 = target1 + 8;
+    TimerStructure timer;
     if (target1 == NULL) {
-        fprintf(stderr, "Could not allocate aligned mem\n");
+        fprintf(stderr, "Target is NULL\n");
+        latency.result = -1;
+        return latency;
     }
+    // drop them on different cache lines
+    target1 = addr_base; // this is ok because we allocate one more cache line than neceesary if owned
+    target2 = target1 + 8;
+    
 
     *target1 = 1;
     *target2 = 0;
@@ -150,12 +167,21 @@ TimerResult RunOwnedTest(unsigned int processor1, unsigned int processor2, uint6
     lat1.start = 3;
     lat1.target = target1;
     lat1.readTarget = target2;
+    timerthreads[0].threadFunc = ReadLatencyTestThread;
+    timerthreads[0].pArg = &lat1;
+    timerthreads[0].processorIdx = processor1;
+
     lat2.iterations = iter;
     lat2.start = 2;
     lat2.target = target2;
     lat2.readTarget = target1;
+    timerthreads[1].threadFunc = ReadLatencyTestThread;
+    timerthreads[1].pArg = (void*) &lat2;
+    timerthreads[1].processorIdx = processor2;
 
-    latency = TimeThreads(processor1, processor2, iter, (void*)&lat1, (void*)&lat2, ReadLatencyTestThread);
+    latency = TimeThreads(timerthreads, 2, &timer);
+    common_timer_result_process_iterations(&latency, iter *2);
+    fprintf(stderr, "%d to %d: %f ns\n", processor1, processor2, latency.result*2 ); //Lat Multiplied by 2 to get previous behavior
     return latency;
 }
 

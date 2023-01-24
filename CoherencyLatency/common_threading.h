@@ -25,24 +25,24 @@ int32_t common_threading_get_num_cpu_cores(){
 }
 
 
-typedef struct time_threads_func_args_holder_t{
+typedef struct time_threads_data_t{
     int ((*threadFunc)(void *));
-    void* arg_struct_ptr;
-    int coreIdx;
+    void* pArg;
+    int processorIdx;
 #if IS_GCC_POSIX(ENVTYPE) && (defined(NEW_PT_TIMETHREADS))    
     pthread_barrier_t* barrier;
 #endif
-} TimeThreadFuncArgsHolder;
+} TimeThreadData;
 
 #if IS_WINDOWS(ENVTYPE)
 DWORD WINAPI ThreadFunctionRunner(LPVOID param) {
-    TimeThreadFuncArgsHolder *arg_holder = (TimeThreadFuncArgsHolder *)param;
-    return arg_holder->threadFunc(arg_holder->arg_struct_ptr);
+    TimeThreadData *arg_holder = (TimeThreadData *)param;
+    return arg_holder->threadFunc(arg_holder->pArg);
 }
 #elif IS_GCC_POSIX(ENVTYPE)
 #define gettid() syscall(SYS_gettid)
 void* ThreadFunctionRunner(void* param){
-    TimeThreadFuncArgsHolder *arg_holder = (TimeThreadFuncArgsHolder *)param;
+    TimeThreadData *arg_holder = (TimeThreadData *)param;
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
     CPU_SET(arg_holder->coreIdx, &cpuset);
@@ -51,7 +51,7 @@ void* ThreadFunctionRunner(void* param){
     #if IS_GCC(ENVTYPE) && (defined(NEW_PT_TIMETHREADS))    
     pthread_barrier_wait(arg_holder->barrier);
     #endif
-    arg_holder->threadFunc(arg_holder->arg_struct_ptr);
+    arg_holder->threadFunc(arg_holder->pArg);
     pthread_exit(NULL);
 }
 #endif
@@ -60,141 +60,114 @@ void* ThreadFunctionRunner(void* param){
 // Need to check if TimeThreads can be used generically in other places where threads are used, and maybe in that case it can be made more generic to different thread counts.
 // We can take the iter (and relevant print) out of the function, and then turn processorX and latX into two arrays, along with an int/size_t len which represents how many.
 #if IS_WINDOWS(ENVTYPE)
-TimerResult TimeThreads(unsigned int processor1,
-                       unsigned int processor2,
-                       uint64_t iter, 
-                       void* lat1, 
-                       void* lat2,
-                       int (*threadFunc)(void *)) {
-    TimerStructure timer;
+TimerResult TimeThreads( TimeThreadData* thread_datas,
+                         int thread_count,
+                         TimerStructure* timer) {
+
     TimerResult timer_result;
-    HANDLE testThreads[2];
-    DWORD tid1, tid2;
-    TimeThreadFuncArgsHolder funcholder_thread_1, funcholder_thread_2;
-    funcholder_thread_1.threadFunc =  threadFunc;
-    funcholder_thread_1.arg_struct_ptr = lat1;
-    funcholder_thread_1.coreIdx =  processor1;
-    funcholder_thread_2.threadFunc =  threadFunc;
-    funcholder_thread_2.arg_struct_ptr = lat2;
-    funcholder_thread_2.coreIdx =  processor2;
 
-    testThreads[0] = CreateThread(NULL, 0, ThreadFunctionRunner, &funcholder_thread_1, CREATE_SUSPENDED, &tid1);
-    testThreads[1] = CreateThread(NULL, 0, ThreadFunctionRunner, &funcholder_thread_2, CREATE_SUSPENDED, &tid2);
+    HANDLE* testThreads = (HANDLE*)malloc(thread_count * sizeof(HANDLE));
+    DWORD* tids = (DWORD*)malloc(thread_count * sizeof(DWORD));
 
-    if (testThreads[0] == NULL || testThreads[1] == NULL) {
-        fprintf(stderr, "Failed to create test threads\n");
-        // Need better way to do this but for now:
-        timer_result.per_iter_ns = -1;
-        return timer_result;
+
+    for (int i= 0; i < thread_count; i++){
+            testThreads[i] = CreateThread(NULL, 0, ThreadFunctionRunner, &(thread_datas[i]), CREATE_SUSPENDED, &tids[i]);
+        if (testThreads[i] == NULL) {
+            fprintf(stderr, "Failed to create test threads %d on core %d \n", i, thread_datas[i].processorIdx);
+            // Need better way to do this but for now:
+            free(testThreads);
+            free(tids);
+            // Todo: Close all handles
+            timer_result.result = -1;
+            return timer_result;
+        }
+        SetThreadAffinityMask(testThreads[i], 1ULL << (uint64_t)thread_datas[i].processorIdx);
+
     }
 
-    SetThreadAffinityMask(testThreads[0], 1ULL << (uint64_t)processor1);
-    SetThreadAffinityMask(testThreads[1], 1ULL << (uint64_t)processor2);
-
-    common_timer_start(&timer);
-    ResumeThread(testThreads[0]);
-    ResumeThread(testThreads[1]);
-    WaitForMultipleObjects(2, testThreads, TRUE, INFINITE);
+    common_timer_start(timer);
+    for (int i= 0; i < thread_count; i++){
+        ResumeThread(testThreads[i]);
+    }
+    WaitForMultipleObjects(thread_count, testThreads, TRUE, INFINITE);
     
     // each thread does interlocked compare and exchange iterations times. We multipy iter count by 2 to get overall count of locked ops
-    common_timer_end(&timer, &timer_result, iter*2);
-
-    fprintf(stderr, "%d to %d: %f ns\n", processor1, processor2, timer_result.per_iter_ns*2); //Lat Multiplied by 2 to get previous behavior
+    common_timer_end(timer, &timer_result);
+//ADD ITER
+    //fprintf(stderr, "%d to %d: %f ns\n", processor1, processor2, timer_result.per_iter_ns*2); //Lat Multiplied by 2 to get previous behavior
     
-    CloseHandle(testThreads[0]);
-    CloseHandle(testThreads[1]);
+    for (int i= 0; i < thread_count; i++){
+        CloseHandle(testThreads[i]);
+        free(testThreads);
+        free(tids);
+    }
     
     return timer_result;
 }
 #elif IS_GCC_POSIX(ENVTYPE) && !(defined(NEW_PT_TIMETHREADS))
-
 //TODO: Consider implementing more like the Windows implementation, using either pthread barriers or some other waiting system.
-TimerResult TimeThreads(unsigned int processor1,
-                       unsigned int processor2,
-                       uint64_t iter, 
-                       void* lat1, 
-                       void* lat2,
-                       int (*threadFunc)(void *)) {
-    TimerStructure timer;
+TimerResult TimeThreads( TimeThreadData* thread_datas,
+                         int thread_count,
+                         TimerStructure* timer) {
     TimerResult timer_result;
-    pthread_t testThreads[2];
-    int t1rc, t2rc;
-    void *res1, *res2;
-    TimeThreadFuncArgsHolder funcholder_thread_1, funcholder_thread_2;
-    funcholder_thread_1.threadFunc =  threadFunc;
-    funcholder_thread_1.arg_struct_ptr = lat1;
-    funcholder_thread_1.coreIdx =  processor1;
-    funcholder_thread_2.threadFunc =  threadFunc;
-    funcholder_thread_2.arg_struct_ptr = lat2;
-    funcholder_thread_2.coreIdx =  processor2;
+    pthread_t* testThreads = (pthread_t*)malloc(thread_count * sizeof(pthread_t));
+    int* rc = (int*)malloc(thread_count * sizeof(int));
     
-    common_timer_start(&timer);
-    t1rc = pthread_create(&testThreads[0], NULL, ThreadFunctionRunner, (void *)&funcholder_thread_1);
-    t2rc = pthread_create(&testThreads[1], NULL, ThreadFunctionRunner, (void *)&funcholder_thread_2);
-    if (t1rc != 0 || t2rc != 0) {
-        fprintf(stderr, "Failed to create test threads\n");
-        // Need better way to do this but for now:
-        timer_result.per_iter_ns = -1;
-        return timer_result;
+    common_timer_start(timer);
+    for (int i= 0; i < thread_count; i++){
+        rc[i] = pthread_create(&testThreads[i], NULL, ThreadFunctionRunner, (void *)&(thread_datas[i]));
+            if (rc[i] != 0 ) {
+            fprintf(stderr, "Failed to create test threads\n");
+            // Need better way to do this but for now:
+            // Also, to close threads we've already opened
+            timer_result.result = -1;
+            return timer_result;
+        }
     }
-
-    pthread_join(testThreads[0], &res1);
-    pthread_join(testThreads[1], &res2);
-    
-    // each thread does interlocked compare and exchange iterations times. We multipy iter count by 2 to get overall count of locked ops
-    common_timer_end(&timer, &timer_result, iter*2);
-
-    fprintf(stderr, "%d to %d: %f ns\n", processor1, processor2, timer_result.per_iter_ns*2); //Lat Multiplied by 2 to get previous behavior
-    
+    for (int i= 0; i < thread_count; i++){
+        pthread_join(testThreads[i], NULL);
+    }    
+    common_timer_end(timer, &timer_result);    
     return timer_result;
 }
 #elif IS_GCC_POSIX(ENVTYPE) && (defined(NEW_PT_TIMETHREADS))
-
-//TODO: Consider implementing more like the Windows implementation, using either pthread barriers or some other waiting system.
-TimerResult TimeThreads(unsigned int processor1,
-                       unsigned int processor2,
-                       uint64_t iter, 
-                       void* lat1, 
-                       void* lat2,
-                       int (*threadFunc)(void *)) {
-    TimerStructure timer;
+TimerResult TimeThreads( TimeThreadData* thread_datas,
+                         int thread_count,
+                         TimerStructure* timer) {
     TimerResult timer_result;
-    pthread_t testThreads[2];
-    int t1rc, t2rc;
-    void *res1, *res2;
+    pthread_t* testThreads = (pthread_t*)malloc(thread_count * sizeof(pthread_t));
+    int* rc = (int*)malloc(thread_count * sizeof(int));
+
     pthread_barrier_t start_barrier; // might be worth having an end barrier too, not sure how much time it takes to close threads and if that might skew results.
-    pthread_barrier_init(&start_barrier, NULL, 3); //3 = 2 child threads + parent
-    TimeThreadFuncArgsHolder funcholder_thread_1, funcholder_thread_2;
-    funcholder_thread_1.threadFunc =  threadFunc;
-    funcholder_thread_1.arg_struct_ptr = lat1;
-    funcholder_thread_1.coreIdx =  processor1;
-    funcholder_thread_1.barrier =  &start_barrier;
-    funcholder_thread_2.threadFunc =  threadFunc;
-    funcholder_thread_2.arg_struct_ptr = lat2;
-    funcholder_thread_2.coreIdx =  processor2;
-    funcholder_thread_2.barrier =  &start_barrier;
-    
-    t1rc = pthread_create(&testThreads[0], NULL, ThreadFunctionRunner, (void *)&funcholder_thread_1);
-    t2rc = pthread_create(&testThreads[1], NULL, ThreadFunctionRunner, (void *)&funcholder_thread_2);
-    if (t1rc != 0 || t2rc != 0) {
-        fprintf(stderr, "Failed to create test threads\n");
-        // Need better way to do this but for now:
-        timer_result.per_iter_ns = -1;
-        return timer_result;
+    pthread_barrier_init(&start_barrier, NULL, thread_count + 1 ); 
+   
+    for (int i= 0; i < thread_count; i++){
+        thread_datas[i].barrier =  &start_barrier;
+
+        rc[i] = pthread_create(&testThreads[i], NULL, ThreadFunctionRunner, (void *)&(thread_datas[i]));
+        if (rc[i] != 0 ) {
+            fprintf(stderr, "Failed to create test threads\n");
+            // Need better way to do this but for now:
+            // Also, to close threads we've already opened
+            timer_result.result = -1;
+            return timer_result;
+        }
     }
-    common_timer_start(&timer);
+
+    common_timer_start(timer); // Need to check if this is right. If we start timing before the wait, we could get stuck at barrrier for a while. But after we could start timer way too late.
     pthread_barrier_wait(&start_barrier);
-
-
-    pthread_join(testThreads[0], &res1);
-    pthread_join(testThreads[1], &res2);
     
-    // each thread does interlocked compare and exchange iterations times. We multipy iter count by 2 to get overall count of locked ops
-    common_timer_end(&timer, &timer_result, iter*2);
+    for (int i= 0; i < thread_count; i++){
+        pthread_join(testThreads[i], NULL);
+    }    
+    common_timer_end(timer, &timer_result);    
+    
     pthread_barrier_destroy(&start_barrier);
 
-    fprintf(stderr, "%d to %d: %f ns\n", processor1, processor2, timer_result.per_iter_ns*2); //Lat Multiplied by 2 to get previous behavior
-    
+    for (int i= 0; i < thread_count; i++){
+        free(testThreads);
+        free(rc);  
+    }     
     return timer_result;
 }
 #else
