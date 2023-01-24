@@ -133,7 +133,7 @@ Ptr64b* common_mem_malloc_special(size_t size_to_alloc, size_t alignment, bool a
         size_t hugePageSize = 1 << 21;
         size_to_alloc = (((size_to_alloc - 1) / hugePageSize) + 1) * hugePageSize; // rounded up to nearest hugepage
     }
-    Ptr64b* alloc_ptr;
+    Ptr64b* alloc_ptr = NULL;
     if (!attempt_hugepage && numa_memory_node < 0) {
         alloc_ptr = (Ptr64b*)_aligned_malloc(size_to_alloc, alignment);
         if (alloc_ptr  == NULL) return alloc_ptr;
@@ -183,6 +183,7 @@ Ptr64b* common_mem_malloc_special(size_t size_to_alloc, size_t alignment, bool a
         return alloc_ptr;
     }
     #endif /*NUMA*/
+    return alloc_ptr; // shouldn't be able to get to here but was getting a warning in some tools
     #elif IS_GCC_POSIX(ENVTYPE)
 
     size_t hugePageSize = 1 << 21;
@@ -261,6 +262,7 @@ Ptr64b* common_mem_malloc_special(size_t size_to_alloc, size_t alignment, bool a
         return 0; // 
     #endif
 }
+
 void common_mem_special_free(Ptr64b* ptr){
     int allocation_record_index = 0;
     for (; allocation_record_index < MAX_ALLOCATIONS_PER_RUN; allocation_record_index){
@@ -447,7 +449,7 @@ int common_numa_check_available_node_count(){
         fprintf(stderr, "Could not get highest NUMA node number: %d\n", GetLastError());
         return -1;
     }
-
+    return highestNumaNode;
     #elif IS_GCC_POSIX(ENVTYPE)
     if (numa_available() == -1) {
         fprintf(stderr, "NUMA is not available\n");

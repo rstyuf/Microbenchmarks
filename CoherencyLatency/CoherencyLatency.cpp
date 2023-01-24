@@ -131,8 +131,8 @@ TimerResult RunCoherencyBounceTest(unsigned int processor1, unsigned int process
     timerthreads[1].threadFunc = LatencyTestThread;
     timerthreads[1].pArg = (void*) &lat2;
     timerthreads[1].processorIdx = processor2;
-
     latency = TimeThreads(timerthreads, 2, &timer);
+
     common_timer_result_process_iterations(&latency, iter *2);
     fprintf(stderr, "%d to %d: %f ns\n", processor1, processor2, latency.result*2 ); //Lat Multiplied by 2 to get previous behavior
     return latency;

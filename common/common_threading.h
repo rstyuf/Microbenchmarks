@@ -71,7 +71,7 @@ TimerResult TimeThreads( TimeThreadData* thread_datas,
 
 
     for (int i= 0; i < thread_count; i++){
-            testThreads[i] = CreateThread(NULL, 0, ThreadFunctionRunner, &(thread_datas[i]), CREATE_SUSPENDED, &tids[i]);
+        testThreads[i] = CreateThread(NULL, 0, ThreadFunctionRunner, &(thread_datas[i]), CREATE_SUSPENDED, &tids[i]);
         if (testThreads[i] == NULL) {
             fprintf(stderr, "Failed to create test threads %d on core %d \n", i, thread_datas[i].processorIdx);
             // Need better way to do this but for now:
@@ -82,7 +82,6 @@ TimerResult TimeThreads( TimeThreadData* thread_datas,
             return timer_result;
         }
         SetThreadAffinityMask(testThreads[i], 1ULL << (uint64_t)thread_datas[i].processorIdx);
-
     }
 
     common_timer_start(timer);
@@ -91,17 +90,15 @@ TimerResult TimeThreads( TimeThreadData* thread_datas,
     }
     WaitForMultipleObjects(thread_count, testThreads, TRUE, INFINITE);
     
-    // each thread does interlocked compare and exchange iterations times. We multipy iter count by 2 to get overall count of locked ops
+    
     common_timer_end(timer, &timer_result);
-//ADD ITER
-    //fprintf(stderr, "%d to %d: %f ns\n", processor1, processor2, timer_result.per_iter_ns*2); //Lat Multiplied by 2 to get previous behavior
     
     for (int i= 0; i < thread_count; i++){
         CloseHandle(testThreads[i]);
-        free(testThreads);
-        free(tids);
+
     }
-    
+    free(testThreads);
+    free(tids);
     return timer_result;
 }
 #elif IS_GCC_POSIX(ENVTYPE) && !(defined(NEW_PT_TIMETHREADS))
