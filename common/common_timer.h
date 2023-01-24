@@ -65,10 +65,6 @@ inline void common_timer_result_process_bw(TimerResult* results, int transferred
 
 
 
-
-
-
-
 /**
 //Usage (given started TimerStructure t and iteration count iter): "TimerResult t_res; common_timer_end(&t, &t_res, iter);"
 inline void common_timer_end(TimerStructure* timer, TimerResult* results, unsigned int iterations_cnt) {
