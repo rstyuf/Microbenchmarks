@@ -6,8 +6,9 @@
 #if IS_WINDOWS(ENVTYPE)
 #include <windows.h>
 #include <tchar.h>
-
-
+#include <windows.h>
+#include <intrin.h>
+#include <immintrin.h>
 #elif IS_GCC_POSIX(ENVTYPE)
 #include <sys/sysinfo.h>
 #include <sys/mman.h>
@@ -31,14 +32,16 @@ int _MSR_LINUX_openMsr(int core);
 void _MSR_LINUX_detectCpuMaker();
 #endif
 
+
 typedef struct open_msr_t{
     bool valid = false;
 #if IS_WINDOWS(ENVTYPE)
     HANDLE winring0DriverHandle = INVALID_HANDLE_VALUE;
-//#elif IS_GCC_POSIX(ENVTYPE)
+#elif IS_GCC_POSIX(ENVTYPE)
     int *msrFds;
     int numProcs;
 #endif
+    bool uncore_counters_enabled
 } MsrDescriptor;
 
 
@@ -108,11 +111,47 @@ void common_msr_write(MsrDescriptor fd, uint32_t addr, uint64_t value){
 #endif
 }
 
+typedef enum cpu_vendor_enum{CPU_VENDOR_INTEL, CPU_VENDOR_AMD, CPU_VENDOR_UNKNOWN} CpuVendorEnum;
+CpuVendorEnum common_msr_detect_cpu_vendor() {
+#if IS_ISA_X86(ENVTYPE)
+    uint32_t *uintPtr;
+    char cpuName[13];
+//I split by IS_MSVC and IS_GCC, but it's possible the correct split is somewhere else.
+#if IS_MSVC(ENVTYPE)
+    uintPtr = (uint32_t *)cpuName;
+    __cpuidex((int*) uintPtr, 0, 0);
+#elif IS_GCC(ENVTYPE)
+    uint32_t cpuidEax, cpuidEbx, cpuidEcx, cpuidEdx;
+    __cpuid_count(0, 0, cpuidEax, cpuidEbx, cpuidEcx, cpuidEdx);
+    uintPtr = (uint32_t *)cpuName;
+    uintPtr[0] = cpuidEbx;
+    uintPtr[1] = cpuidEdx;
+    uintPtr[2] = cpuidEcx;
+#else
+    NOT_IMPLEMENTED_YET("CPU Vendor Detection", "Only implemented for MSVC and GCC");
+#endif //IS_MSCV vs IS_GCC
+    cpuName[12] = 0;
+    fprintf(stderr, "CPU name: %s\n", cpuName);
+    if (memcmp(cpuName, "GenuineIntel", 12) == 0) {
+        fprintf(stderr, "Looks like Intel\n");
+        return CPU_VENDOR_INTEL;
+    } else if (memcmp(cpuName, "AuthenticAMD", 12) == 0) {
+        fprintf(stderr, "Looks like AMD\n");
+        return CPU_VENDOR_AMD;
+    }
+    else {
+        fprintf(stderr, "CPU Vendor seems unknown!\n");
+        return CPU_VENDOR_UNKNOWN;
+    }
+#else /*IS_ISA_X86(ENVTYPE)*/
+    NOT_IMPLEMENTED_YET("CPU Vendor Detection", "Only implemented for x86 (both 32 and 64 bit)");
+    return CPU_VENDOR_UNKNOWN; 
+#endif
+}
 
 
 
-
-///
+////////////
 #if IS_WINDOWS(ENVTYPE)
 MsrDescriptor _MSR_WIN_OpenWinring0Driver()
 {
@@ -239,26 +278,7 @@ int _MSR_LINUX_openMsr(int core) {
     return fd;
 }
 
-void _MSR_LINUX_detectCpuMaker() {
-    uint32_t cpuidEax, cpuidEbx, cpuidEcx, cpuidEdx;
-    uint32_t *uintPtr;
-    char cpuName[13];
-    int amdCpu = 0;
-    __cpuid_count(0, 0, cpuidEax, cpuidEbx, cpuidEcx, cpuidEdx);
-    uintPtr = (uint32_t *)cpuName;
-    uintPtr[0] = cpuidEbx;
-    uintPtr[1] = cpuidEdx;
-    uintPtr[2] = cpuidEcx;
-    cpuName[12] = 0;
-    fprintf(stderr, "CPU name: %s\n", cpuName);
-    if (memcmp(cpuName, "GenuineIntel", 12) == 0) {
-        amdCpu = 0;
-	fprintf(stderr, "Looks like Intel\n");
-    } else if (memcmp(cpuName, "AuthenticAMD", 12) == 0) {
-        amdCpu = 1;
-	fprintf(stderr, "Looks like AMD\n");
-    }
-}
+
 
 #endif
 /*

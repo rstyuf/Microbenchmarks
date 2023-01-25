@@ -190,17 +190,16 @@ void setBoost(int on) {
     uint64_t hwcrValue;
     for (int i = 0; i < numProcs; i++) {
         setAffinity(i);
-	if (!msrFds[i]) msrFds[i] = openMsr(i);
-	hwcrValue = readMsr(msrFds[i], HWCR);
+        if (!msrFds[i]) msrFds[i] = openMsr(i);
+        hwcrValue = readMsr(msrFds[i], HWCR);
         if (on) {
-	    hwcrValue &= ~(1UL << 25);  // unset bit to request CPB on
-	    //fprintf(stderr, "Requesting CPB on (unsetting bit 25 in HWCR): 0x%08x\n", hwcrValue);
-	} else {
-	    hwcrValue |= (1UL << 25);      // set bit to disable CPB
-	    //fprintf(stderr, "Requesting CPB off (setting bit 25 in HWCR): 0x%08x\n", hwcrValue);
-	}
-
-	writeMsr(msrFds[i], HWCR, hwcrValue);
+            hwcrValue &= ~(1UL << 25);  // unset bit to request CPB on
+            //fprintf(stderr, "Requesting CPB on (unsetting bit 25 in HWCR): 0x%08x\n", hwcrValue);
+        } else {
+            hwcrValue |= (1UL << 25);      // set bit to disable CPB
+            //fprintf(stderr, "Requesting CPB off (setting bit 25 in HWCR): 0x%08x\n", hwcrValue);
+        }
+        writeMsr(msrFds[i], HWCR, hwcrValue);
     }
 }
 

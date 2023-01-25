@@ -4,13 +4,17 @@
 #include "common_common.h"
 #if IS_WINDOWS(ENVTYPE)
 #include <windows.h>
+#include <winbase.h>
 #elif IS_GCC_POSIX(ENVTYPE) 
 #include <sys/sysinfo.h>
 #include <pthread.h>
+
+#define AFFINITY_PTHREAD (false);
+#define gettid() syscall(SYS_gettid)
+
 #endif
 #include <stdint.h>
 // </includes>
-
 int32_t common_threading_get_num_cpu_cores(){
 #if IS_WINDOWS(ENVTYPE)
     DWORD numProcs;
@@ -24,6 +28,41 @@ int32_t common_threading_get_num_cpu_cores(){
  
 }
 
+
+bool common_threading_set_affinity(int core) { // Sets affinity for the current thread
+#if IS_WINDOWS(ENVTYPE)
+    HANDLE cur_thread =  GetCurrentThread();
+    DWORD_PTR mask = (1ULL << (uint64_t)core);
+    if (mask == 0) {
+        fprintf(stderr, "unable to set thread affinity to %d (mask ==0)\n", core);
+        return false;
+    }
+
+    int rc = SetThreadAffinityMask(cur_thread, mask);
+    if (rc == 0){ 
+        fprintf(stderr, "unable to set thread affinity to %d (SetThreadAffinityMask error: %d)\n", GetLastError());
+        return false;
+    }
+    return true;
+#elif IS_GCC_POSIX(ENVTYPE)
+    int rc;
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    CPU_SET(core, &cpuset);
+
+#if AFFINITY_PTHREAD == true
+    pthread_t thread = pthread_self();
+    rc = pthread_setaffinity_np(thread, sizeof(cpuset), &cpuset);
+#else /*if AFFINITY_PTHREAD == false*/
+    rc = sched_setaffinity(gettid(), sizeof(cpu_set_t), &cpuset);
+#endif /*AFFINITY_PTHREAD*/
+    if (rc != 0) {
+        fprintf(stderr, "unable to set thread affinity to %d\n", core);
+    }
+#else
+    NOT_IMPLEMENTED_YET("common_threading_set_affinity", "Implemented on Windows and Linux only.");
+#endif
+}
 
 typedef struct time_threads_data_t{
     int ((*threadFunc)(void *));
@@ -40,14 +79,10 @@ DWORD WINAPI ThreadFunctionRunner(LPVOID param) {
     return arg_holder->threadFunc(arg_holder->pArg);
 }
 #elif IS_GCC_POSIX(ENVTYPE)
-#define gettid() syscall(SYS_gettid)
 void* ThreadFunctionRunner(void* param){
     TimeThreadData *arg_holder = (TimeThreadData *)param;
-    cpu_set_t cpuset;
-    CPU_ZERO(&cpuset);
-    CPU_SET(arg_holder->coreIdx, &cpuset);
-    sched_setaffinity(gettid(), sizeof(cpu_set_t), &cpuset);
-    //fprintf(stderr, "thread %ld set affinity %d\n", gettid(), arg_holder->coreIdx);
+    common_threading_set_affinity(arg_holder->processorIdx);
+    //fprintf(stderr, "thread %ld set affinity %d\n", gettid(), arg_holder->processorIdx);
     #if IS_GCC(ENVTYPE) && (defined(NEW_PT_TIMETHREADS))    
     pthread_barrier_wait(arg_holder->barrier);
     #endif

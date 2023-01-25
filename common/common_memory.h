@@ -39,7 +39,12 @@ struct allocation_record_t {
 #define MAX_NUMA_NODES (64)
 
 #define MAX_ALLOCATIONS_PER_RUN (128)
+
+#if !(COMPOUND_TEST)
 struct allocation_record_t allocations[MAX_ALLOCATIONS_PER_RUN] = {0};
+#elif !(ALLOCATOR_MODULE)
+extern struct allocation_record_t* allocations;
+#endif
 
 #define COMMON_MEM_ALLOC_NUMA_DISABLED (-1) // Or actually anything negative
 

@@ -17,10 +17,10 @@
 #include <pthread.h>
 #include <sched.h>
 #include <math.h>
-#include <sys/mman.h>
-#include <sys/sysinfo.h>
+//#include <sys/mman.h>
+//#include <sys/sysinfo.h>
 #include <errno.h>
-#include <numa.h>
+//#include <numa.h>
 
 #pragma GCC diagnostic ignored "-Wattributes"
 
