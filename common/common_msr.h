@@ -8,18 +8,32 @@
 #include <tchar.h>
 #include <windows.h>
 #include <intrin.h>
-#include <immintrin.h>
 #elif IS_GCC_POSIX(ENVTYPE)
 #include <sys/sysinfo.h>
 #include <sys/mman.h>
 #include <unistd.h>
 #include <sys/mman.h>
 #include <errno.h>
-#include <cpuid.h>
-
 #endif
+#if IS_MSVC(ENVTYPE)
+//#include <immintrin.h>
+#elif IS_GCC(ENVTYPE)
+#include <cpuid.h>
+#endif
+
 #include <stdint.h>
 // </includes>
+
+typedef struct open_msr_descr_t{
+    bool valid;//=false;
+#if IS_WINDOWS(ENVTYPE)
+    HANDLE winring0DriverHandle;//=INVALID_HANDLE_VALUE;
+#elif IS_GCC_POSIX(ENVTYPE)
+    int *msrFds;
+    int numProcs;
+#endif
+    bool uncore_counters_enabled;
+} MsrDescriptor;
 
 #if IS_WINDOWS(ENVTYPE)
 MsrDescriptor _MSR_WIN_OpenWinring0Driver();
@@ -33,16 +47,6 @@ void _MSR_LINUX_detectCpuMaker();
 #endif
 
 
-typedef struct open_msr_t{
-    bool valid = false;
-#if IS_WINDOWS(ENVTYPE)
-    HANDLE winring0DriverHandle = INVALID_HANDLE_VALUE;
-#elif IS_GCC_POSIX(ENVTYPE)
-    int *msrFds;
-    int numProcs;
-#endif
-    bool uncore_counters_enabled
-} MsrDescriptor;
 
 
 
