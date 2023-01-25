@@ -1,31 +1,20 @@
 #include "../common/common_common.h"
 #include <stdio.h>
 #include <stdint.h>
-
-#define ITERATIONS 10000000;
-
-TimerResult RunCoherencyBounceTest(unsigned int processor1, unsigned int processor2, uint64_t iter, Ptr64b* addr);
-TimerResult RunCoherencyOwnedTest(unsigned int processor1, unsigned int processor2, uint64_t iter, Ptr64b* addr);
-int LatencyTestThread(void *param);
-int ReadLatencyTestThread(void *param);
-
-Ptr64b* bouncyBase;
-Ptr64b* bouncy;
-
-typedef struct LatencyThreadData {
-    uint64_t start;       // initial value to write into target
-    uint64_t iterations;  // number of iterations to run
-    Ptr64b *target;       // value to bounce between threads, init with start - 1
-    Ptr64b *readTarget;   // for read test, memory location to read from (owned by other core)
-} LatencyData;
-
+#include "CoherencyLatency.h"
+/** "CoherencyLatency.h" Includes
+ *      typedef TimerResult (*CoherencyLatencyTestType)(unsigned int, unsigned int, uint64_t, Ptr64b*);
+ *      #define DEFAULT_ITERATIONS 10000000;
+ *      struct LatencyThreadData_t typedefed to LatencyData
+ *      And the function declarations
+ * */
 
 int main(int argc, char *argv[]) {
-    int numProcs;
     TimerResult **latencies;
-    uint64_t iter = ITERATIONS;
+    uint64_t iter = COHERENCYLAT_DEFAULT_ITERATIONS;
     int offsets = 1;
-    TimerResult (*test)(unsigned int, unsigned int, uint64_t, Ptr64b*) = RunCoherencyBounceTest;
+    Ptr64b* bouncyBase;
+    CoherencyLatencyTestType test= RunCoherencyBounceTest;
 
     for (int argIdx = 1; argIdx < argc; argIdx++) {
         if (*(argv[argIdx]) == '-') {
@@ -50,37 +39,90 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    bouncyBase = (Ptr64b*)common_mem_malloc_aligned(64 * (offsets + (test == RunCoherencyOwnedTest)? 1:0), 4096); 
-    bouncy = bouncyBase;
-    if (bouncy == NULL) {
-        fprintf(stderr, "Could not allocate aligned mem\n");
-        return 0;
-    }
-    numProcs = common_threading_get_num_cpu_cores();
+    return CoherencyTestMain(offsets, iter, test);
+}
+
+int CoherencyTestMain(int offsets, int iterations, CoherencyLatencyTestType test){
+    Ptr64b* bouncyBase;
+    TimerResult **latencies;
+    int numProcs = common_threading_get_num_cpu_cores();
     fprintf(stderr, "Number of CPUs: %u\n", numProcs);
-    latencies = (TimerResult **) malloc(sizeof(TimerResult*) * offsets); //Allocating array of pointers (one for each offset) to arrays of results
-    if (latencies == NULL) {
-        fprintf(stderr, "couldn't allocate result array\n");
-        return 0;
+
+    int ret;
+    ret = CoherencyTestAllocateTestBuffers(offsets, (test == RunCoherencyOwnedTest? 1:0), &bouncyBase);
+    if (ret < 0) return ret;
+
+    ret = CoherencyTestAllocateResultsBuffers(numProcs, offsets, &latencies);
+    if (ret < 0) return ret;
+    
+    CoherencyTestExecute(numProcs, offsets, iterations, bouncyBase, latencies, test);
+    CoherencyTestPrintResults(numProcs, offsets, latencies);
+    // cleaning up
+    CoherencyTestFreeResultsBuffers(offsets, latencies);
+    CoherencyTestFreeTestBuffers(bouncyBase);
+
+}
+
+int CoherencyTestAllocateTestBuffers(int offsets, int additional_cachelines, Ptr64b** BaseAddress){
+    
+    *BaseAddress = (Ptr64b*)common_mem_malloc_aligned(64 * (offsets + additional_cachelines), 4096); 
+    if (*BaseAddress == NULL) {
+        fprintf(stderr, "Could not allocate aligned mem\n");
+        return -1;
     }
-    memset(latencies, 0, sizeof(TimerResult*) * offsets); //? Zeroing the pointers? Why? TODO
+    return 0;
+}
+void CoherencyTestFreeTestBuffers(Ptr64b* BaseAddress){
+    common_mem_aligned_free(BaseAddress);
+}
+
+int CoherencyTestAllocateResultsBuffers(int numProcs, int offsets, TimerResult ***latencies){
+    *latencies = (TimerResult **) malloc(sizeof(TimerResult*) * offsets); //Allocating array of pointers (one for each offset) to arrays of results
+    if (*latencies == NULL) {
+        fprintf(stderr, "couldn't allocate result array\n");
+        return -1;
+    }
+    memset(*latencies, 0, sizeof(TimerResult*) * offsets); //? Zeroing the pointers? Why? TODO
+    for (int offsetIdx = 0; offsetIdx < offsets; offsetIdx++) {
+        (*latencies)[offsetIdx] = (TimerResult*)malloc(sizeof(TimerResult) * numProcs * numProcs);
+        if (*latencies == NULL) {
+            fprintf(stderr, "couldn't allocate result sub-array %d\n", offsetIdx);
+            return -1;
+        }
+    }
+    return 0;
+}
+void CoherencyTestFreeResultsBuffers(int offsets, TimerResult **latencies){
+    for (int offsetIdx = 0; offsetIdx < offsets; offsetIdx++) {
+        TimerResult* latenciesPtr = latencies[offsetIdx];
+        free(latenciesPtr);
+        latenciesPtr = NULL;
+    }
+    free(latencies);
+}
+
+void CoherencyTestExecute(int numProcs, int offsets, int iterations, Ptr64b* bouncyBase, TimerResult **latencies, CoherencyLatencyTestType test){
+    Ptr64b* bouncy = bouncyBase;
     TimerResult non_result;
     non_result.result = 0;
     for (int offsetIdx = 0; offsetIdx < offsets; offsetIdx++) {
         bouncy = (Ptr64b*)((char*)bouncyBase + offsetIdx * 64);
-        latencies[offsetIdx] = (TimerResult*)malloc(sizeof(TimerResult) * numProcs * numProcs);
+        //latencies[offsetIdx] = (TimerResult*)malloc(sizeof(TimerResult) * numProcs * numProcs); // seperated out
         TimerResult *latenciesPtr = latencies[offsetIdx];
         
         // Run all to all, skipping testing a core against itself ofc
         // technically can skip the other way around (start j = i + 1) but meh
         for (int i = 0;i < numProcs; i++) {
             for (int j = 0;j < numProcs; j++) {
-                latenciesPtr[j + i * numProcs] = i == j ? non_result : test(i, j, iter, bouncy);
+                latenciesPtr[j + i * numProcs] = i == j ? non_result : test(i, j, iterations, bouncy);
             }
         }
     }
+}
 
-      for (int offsetIdx = 0; offsetIdx < offsets; offsetIdx++) {
+
+void CoherencyTestPrintResults(int numProcs, int offsets, TimerResult **latencies){
+    for (int offsetIdx = 0; offsetIdx < offsets; offsetIdx++) {
         printf("Cache line offset: %d\n", offsetIdx);
         TimerResult* latenciesPtr = latencies[offsetIdx];
 
@@ -93,15 +135,9 @@ int main(int argc, char *argv[]) {
             }
             printf("\n");
         }
-
-        free(latenciesPtr);
+        //free(latenciesPtr);// Now done seperately
     }
-
-    free(latencies);
-    common_mem_aligned_free(bouncyBase);
-    return 0;
 }
-
 
 /// <summary>
 /// Measures latency from one logical processor core to another
