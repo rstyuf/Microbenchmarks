@@ -11,9 +11,9 @@
 
 int main(int argc, char *argv[]) {
     TimerResult **latencies;
+    TimerStructure timer;
     uint64_t iter = COHERENCYLAT_DEFAULT_ITERATIONS;
     int offsets = 1;
-    Ptr64b* bouncyBase;
     CoherencyLatencyTestType test= RunCoherencyBounceTest;
 
     for (int argIdx = 1; argIdx < argc; argIdx++) {
@@ -39,10 +39,10 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    return CoherencyTestMain(offsets, iter, test);
+    return CoherencyTestMain(offsets, iter, test, &timer);
 }
 
-int CoherencyTestMain(int offsets, int iterations, CoherencyLatencyTestType test){
+int CoherencyTestMain(int offsets, int iterations, CoherencyLatencyTestType test, TimerStructure *timer){
     Ptr64b* bouncyBase;
     TimerResult **latencies;
     int numProcs = common_threading_get_num_cpu_cores();
@@ -55,7 +55,7 @@ int CoherencyTestMain(int offsets, int iterations, CoherencyLatencyTestType test
     ret = CoherencyTestAllocateResultsBuffers(numProcs, offsets, &latencies);
     if (ret < 0) return ret;
     
-    CoherencyTestExecute(numProcs, offsets, iterations, bouncyBase, latencies, test);
+    CoherencyTestExecute(numProcs, offsets, iterations, bouncyBase, latencies, test, timer);
     CoherencyTestPrintResults(numProcs, offsets, latencies);
     // cleaning up
     CoherencyTestFreeResultsBuffers(offsets, latencies);
@@ -101,7 +101,7 @@ void CoherencyTestFreeResultsBuffers(int offsets, TimerResult **latencies){
     free(latencies);
 }
 
-void CoherencyTestExecute(int numProcs, int offsets, int iterations, Ptr64b* bouncyBase, TimerResult **latencies, CoherencyLatencyTestType test){
+void CoherencyTestExecute(int numProcs, int offsets, int iterations, Ptr64b* bouncyBase, TimerResult **latencies, CoherencyLatencyTestType test, TimerStructure *timer){
     Ptr64b* bouncy = bouncyBase;
     TimerResult non_result;
     non_result.result = 0;
@@ -114,7 +114,7 @@ void CoherencyTestExecute(int numProcs, int offsets, int iterations, Ptr64b* bou
         // technically can skip the other way around (start j = i + 1) but meh
         for (int i = 0;i < numProcs; i++) {
             for (int j = 0;j < numProcs; j++) {
-                latenciesPtr[j + i * numProcs] = i == j ? non_result : test(i, j, iterations, bouncy);
+                latenciesPtr[j + i * numProcs] = i == j ? non_result : test(i, j, iterations, bouncy, timer);
             }
         }
     }
@@ -147,12 +147,11 @@ void CoherencyTestPrintResults(int numProcs, int offsets, TimerResult **latencie
 /// <param name="iter">Number of iterations</param>
 /// <param name="addr_base">aligned mem to bounce around</param>
 /// <returns>latency per iteration in ns</returns>
-TimerResult RunCoherencyBounceTest(unsigned int processor1, unsigned int processor2, uint64_t iter, Ptr64b* addr_base) {
+TimerResult RunCoherencyBounceTest(unsigned int processor1, unsigned int processor2, uint64_t iter, Ptr64b* addr_base, TimerStructure* timer) {
     TimeThreadData timerthreads[2] = {0};
     LatencyData lat1, lat2;
     TimerResult latency;
-    TimerStructure timer;
-
+    
     *addr_base = 0;
     lat1.iterations = iter;
     lat1.start = 1;
@@ -167,26 +166,23 @@ TimerResult RunCoherencyBounceTest(unsigned int processor1, unsigned int process
     timerthreads[1].threadFunc = LatencyTestThread;
     timerthreads[1].pArg = (void*) &lat2;
     timerthreads[1].processorIdx = processor2;
-    latency = TimeThreads(timerthreads, 2, &timer);
+    latency = TimeThreads(timerthreads, 2, timer);
 
     common_timer_result_process_iterations(&latency, iter *2);
     fprintf(stderr, "%d to %d: %f ns\n", processor1, processor2, latency.result*2 ); //Lat Multiplied by 2 to get previous behavior
     return latency;
-
 }
 
-TimerResult RunCoherencyOwnedTest(unsigned int processor1, unsigned int processor2, uint64_t iter, Ptr64b* addr_base) {
-    
+TimerResult RunCoherencyOwnedTest(unsigned int processor1, unsigned int processor2, uint64_t iter, Ptr64b* addr_base, TimerStructure* timer) {
     TimeThreadData timerthreads[2] = {0};
     LatencyData lat1, lat2;
     Ptr64b* target1, * target2;
     TimerResult latency;
-    TimerStructure timer;
-    if (target1 == NULL) {
+    /*if (target1 == NULL) {
         fprintf(stderr, "Target is NULL\n");
         latency.result = -1;
         return latency;
-    }
+    }*/
     // drop them on different cache lines
     target1 = addr_base; // this is ok because we allocate one more cache line than neceesary if owned
     target2 = target1 + 8;
@@ -210,7 +206,7 @@ TimerResult RunCoherencyOwnedTest(unsigned int processor1, unsigned int processo
     timerthreads[1].pArg = (void*) &lat2;
     timerthreads[1].processorIdx = processor2;
 
-    latency = TimeThreads(timerthreads, 2, &timer);
+    latency = TimeThreads(timerthreads, 2, timer);
     common_timer_result_process_iterations(&latency, iter *2);
     fprintf(stderr, "%d to %d: %f ns\n", processor1, processor2, latency.result*2 ); //Lat Multiplied by 2 to get previous behavior
     return latency;
