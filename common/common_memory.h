@@ -38,13 +38,23 @@ struct allocation_record_t {
 
 #define MAX_NUMA_NODES (64)
 
+#ifndef MAX_ALLOCATIONS_PER_RUN
 #define MAX_ALLOCATIONS_PER_RUN (128)
+#endif
 
-#if !(COMPOUND_TEST)
+#if COMPOUND_TEST && !ALLOCATOR_MODULE
+extern struct allocation_record_t* allocations;
+#else //Not a COMPOUND_TEST, or an ALLOCATOR_MODULE, this is most cases.
+struct allocation_record_t allocations[MAX_ALLOCATIONS_PER_RUN] = {0};
+#endif
+
+/*
+#if !(COMPOUND_TEST || ALLOCATOR_MODULE)
 struct allocation_record_t allocations[MAX_ALLOCATIONS_PER_RUN] = {0};
 #elif !(ALLOCATOR_MODULE)
 extern struct allocation_record_t* allocations;
 #endif
+*/
 
 #define COMMON_MEM_ALLOC_NUMA_DISABLED (-1) // Or actually anything negative
 

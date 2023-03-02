@@ -8,9 +8,11 @@
  *      struct LatencyThreadData_t typedefed to LatencyData
  *      And the function declarations
  * */
-
+#if COMPOUND_TEST
+// We don't want the main in this case
+#else
 int main(int argc, char *argv[]) {
-    TimerResult **latencies;
+    //TimerResult **latencies;
     TimerStructure timer;
     uint64_t iter = COHERENCYLAT_DEFAULT_ITERATIONS;
     int offsets = 1;
@@ -41,6 +43,7 @@ int main(int argc, char *argv[]) {
 
     return CoherencyTestMain(offsets, iter, test, &timer);
 }
+#endif /*! COMPOUND_TEST*/
 
 int CoherencyTestMain(int offsets, int iterations, CoherencyLatencyTestType test, TimerStructure *timer){
     Ptr64b* bouncyBase;
@@ -60,7 +63,7 @@ int CoherencyTestMain(int offsets, int iterations, CoherencyLatencyTestType test
     // cleaning up
     CoherencyTestFreeResultsBuffers(offsets, latencies);
     CoherencyTestFreeTestBuffers(bouncyBase);
-
+    return 0;
 }
 
 int CoherencyTestAllocateTestBuffers(int offsets, int additional_cachelines, Ptr64b** BaseAddress){

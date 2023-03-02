@@ -43,10 +43,10 @@ extern uint32_t latencytest(uint64_t iterations, uint64_t *arr);
 void (*stlfFunc)(uint64_t, char *) = NULL;
 #endif
 
-TimerResult RunTest(uint32_t size_kb, uint32_t iterations, uint32_t *preallocatedArr);
-TimerResult RunAsmTest(uint32_t size_kb, uint32_t iterations, uint32_t *preallocatedArr);
-TimerResult RunTlbTest(uint32_t size_kb, uint32_t iterations, uint32_t *preallocatedArr);
-TimerResult RunTlbRawTest(uint32_t size_kb, uint32_t iterations, uint32_t *preallocatedArr);
+TimerResult RunLatencyTest(uint32_t size_kb, uint32_t iterations, uint32_t *preallocatedArr);
+TimerResult RunAsmLatencyTest(uint32_t size_kb, uint32_t iterations, uint32_t *preallocatedArr);
+TimerResult RunTlbLatencyTest(uint32_t size_kb, uint32_t iterations, uint32_t *preallocatedArr);
+TimerResult RunTlbRawLatencyTest(uint32_t size_kb, uint32_t iterations, uint32_t *preallocatedArr);
 TimerResult RunMlpTest(uint32_t size_kb, uint32_t iterations, uint32_t parallelism);
 
 void MlpTestMain(int mlpTestVal, int* test_sizes, uint32_t testSizeCount);
@@ -54,10 +54,12 @@ void StlfTestMain(uint32_t iterations, int mode, int pageEnd, int loadDistance);
 void NumaTestMain(uint32_t *preallocatedArr, uint32_t testSize);
 
 
-TimerResult (*testFunc)(uint32_t, uint32_t, uint32_t *) = RunTest;
+TimerResult (*testFunc)(uint32_t, uint32_t, uint32_t *) = RunLatencyTest;
 
 uint32_t ITERATIONS = 100000000;
-
+#if COMPOUND_TEST
+// We don't want the main in this case
+#else
 int main(int argc, char* argv[]) {
     uint32_t maxTestSizeMb = 0;
     uint32_t singleSize = 0;
@@ -75,13 +77,13 @@ int main(int argc, char* argv[]) {
                 char *testType = argv[argIdx];
 
 		        if (strncmp(testType, "c", 1) == 0) {
-                    testFunc = RunTest;
+                    testFunc = RunLatencyTest;
                     fprintf(stderr, "Using simple C test\n");
                 } else if (strncmp(testType, "tlb", 3) == 0) {
-                    testFunc = RunTlbTest;
+                    testFunc = RunTlbLatencyTest;
                     fprintf(stderr, "Testing TLB with one element accessed per 4K page and giving difference\n");
                 } else if (strncmp(testType, "rawtlb", 6) == 0) {
-                    testFunc = RunTlbRawTest;
+                    testFunc = RunTlbRawLatencyTest;
                     fprintf(stderr, "Testing TLB with one element accessed per 4K page and giving raw access times\n");
                 } else if (strncmp(testType, "mlp", 3) == 0) {
                     mlpTest = 32;
@@ -89,7 +91,7 @@ int main(int argc, char* argv[]) {
                 }
                 #ifndef UNKNOWN_ARCH
                 else if (strncmp(testType, "asm", 3) == 0) {
-                    testFunc = RunAsmTest;
+                    testFunc = RunAsmLatencyTest;
                     fprintf(stderr, "Using ASM (simple address) test\n");
                 } else if (strncmp(testType, "stlf", 4) == 0) {
                     stlf = 1;
@@ -198,7 +200,8 @@ int main(int argc, char* argv[]) {
 //#endif
     else {
         if (singleSize == 0) {
-        printf("Region,Latency (ns)\n");
+            //
+            printf("Region,Latency (ns)\n");
             for (int i = 0; i < testSizeCount; i++) {
                 if ((maxTestSizeMb == 0) || (test_sizes[i] <= maxTestSizeMb * 1024))
                     printf("%d,%f\n", test_sizes[i], testFunc(test_sizes[i], ITERATIONS, hugePagesArr).result);
@@ -207,6 +210,7 @@ int main(int argc, char* argv[]) {
                     break;
                 }
             }
+            //
         } else {
             printf("%d,%f\n", singleSize, testFunc(singleSize, ITERATIONS, hugePagesArr).result);
         }
@@ -214,7 +218,21 @@ int main(int argc, char* argv[]) {
 
     return 0;
 }
+#endif /*! COMPOUND_TEST*/
 
+void RunAllLatencyTests(int* test_sizes, uint32_t testSizeCount, uint32_t * preallocArr, uint32_t iterations, uint32_t maxTestSizeMb){
+    if (iterations == 0)
+        iterations = ITERATIONS;
+    printf("Region,Latency (ns)\n");
+    for (int i = 0; i < testSizeCount; i++) {
+        if ((maxTestSizeMb == 0) || (test_sizes[i] <= maxTestSizeMb * 1024))
+            printf("%d,%f\n", test_sizes[i], testFunc(test_sizes[i], iterations, preallocArr).result);
+        else {
+            fprintf(stderr, "Test size %u KB exceeds max test size of %u KB\n", test_sizes[i], maxTestSizeMb * 1024);
+            break;
+        }
+    }
+}
 
 void MlpTestMain(int mlpTestVal, int* test_sizes, uint32_t testSizeCount){
     // allocate arr to hold results
@@ -288,8 +306,10 @@ void NumaTestMain(uint32_t *preallocatedArr, uint32_t testSize){
     }
 
     free(crossnodeLatencies);
-#endif /*NUMA*/
+#else
     fprintf(stderr, "NUMA not supported\n");
+#endif /*NUMA*/
+
 }
 
 /// <summary>
@@ -337,7 +357,7 @@ void FillPatternArr64(uint64_t *pattern_arr, uint64_t list_size, uint64_t byte_i
     }
 }
 
-TimerResult RunTest(uint32_t size_kb, uint32_t iterations, uint32_t *preallocatedArr) {
+TimerResult RunLatencyTest(uint32_t size_kb, uint32_t iterations, uint32_t *preallocatedArr) {
     TimerStructure timer;
     TimerResult timer_result;
     uint32_t list_size = size_kb * 1024 / 4;
@@ -425,7 +445,7 @@ TimerResult RunMlpTest(uint32_t size_kb, uint32_t iterations, uint32_t paralleli
 
 
 #ifndef UNKNOWN_ARCH
-TimerResult RunAsmTest(uint32_t size_kb, uint32_t iterations, uint32_t *preallocatedArr) {
+TimerResult RunAsmLatencyTest(uint32_t size_kb, uint32_t iterations, uint32_t *preallocatedArr) {
     TimerStructure timer;
     TimerResult timer_result;
     uint64_t list_size = size_kb * 1024 / POINTER_SIZE; // using 32-bit pointers
@@ -472,7 +492,7 @@ TimerResult RunAsmTest(uint32_t size_kb, uint32_t iterations, uint32_t *prealloc
 // Tries to isolate virtual to physical address translation latency by accessing
 // one element per page, and checking latency difference between that and hitting the same amount of "hot"
 // cachelines using a normal latency test.. 4 KB pages are assumed.
-TimerResult RunTlbRawTest(uint32_t size_kb, uint32_t iterations, uint32_t *preallocatedArr) {
+TimerResult RunTlbRawLatencyTest(uint32_t size_kb, uint32_t iterations, uint32_t *preallocatedArr) {
     TimerStructure timer;
     TimerResult timer_result;
     uint32_t element_count = size_kb / 4;
@@ -551,15 +571,15 @@ TimerResult RunTlbRawTest(uint32_t size_kb, uint32_t iterations, uint32_t *preal
 // Tries to isolate virtual to physical address translation latency by accessing
 // one element per page, and checking latency difference between that and hitting the same amount of "hot"
 // cachelines using a normal latency test.. 4 KB pages are assumed.
-TimerResult RunTlbTest(uint32_t size_kb, uint32_t iterations, uint32_t *preallocatedArr) {
+TimerResult RunTlbLatencyTest(uint32_t size_kb, uint32_t iterations, uint32_t *preallocatedArr) {
 
     TimerResult raw_tlb_result;
-    raw_tlb_result = RunTlbRawTest(size_kb, iterations, preallocatedArr);
+    raw_tlb_result = RunTlbRawLatencyTest(size_kb, iterations, preallocatedArr);
 
     // Get a reference timing for the size, to isolate TLB latency from cache latency
     uint32_t memoryUsedKb = ((size_kb / 4) * CACHELINE_SIZE) / 1024;
     if (memoryUsedKb == 0) memoryUsedKb = 1;
-    TimerResult cacheLatency = RunTest(memoryUsedKb, iterations, preallocatedArr);
+    TimerResult cacheLatency = RunLatencyTest(memoryUsedKb, iterations, preallocatedArr);
 
     //fprintf(stderr, "Memory used - %u KB, latency: %f, ref latency: %f\n", memoryUsedKb, latency, cacheLatency);
     return common_timer_result_difference(raw_tlb_result, cacheLatency);
