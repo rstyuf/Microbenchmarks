@@ -62,6 +62,11 @@ inline void common_timer_result_process_bw(TimerResult* results, int transferred
     results->result =  1000 * transferred / ((double)(results->time_dif_ms)); 
 }
 
+inline void common_timer_result_fprint(TimerResult* results, FILE* fd) {
+//    double mbTransferred = ((iterations_cnt == 0 ? 1: iterations_cnt) * bw_per_itr)  / (double)1e6;
+    fprintf(fd, "%f", results->result); 
+}
+
 
 
 

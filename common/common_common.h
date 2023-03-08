@@ -149,6 +149,7 @@
 #include "common_timer.h"
 #include "common_threading.h"
 #include "common_memory.h"
+#include "common_datalogger.h"
 
 #endif
 

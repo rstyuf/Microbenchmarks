@@ -42,11 +42,11 @@ struct allocation_record_t {
 #define MAX_ALLOCATIONS_PER_RUN (128)
 #endif
 
-#if COMPOUND_TEST && !ALLOCATOR_MODULE
-extern struct allocation_record_t* allocations;
-#else //Not a COMPOUND_TEST, or an ALLOCATOR_MODULE, this is most cases.
+//#if COMPOUND_TEST && !ALLOCATOR_MODULE
+//extern struct allocation_record_t* allocations;
+//#else //Not a COMPOUND_TEST, or an ALLOCATOR_MODULE, this is most cases.
 struct allocation_record_t allocations[MAX_ALLOCATIONS_PER_RUN] = {0};
-#endif
+//#endif
 
 /*
 #if !(COMPOUND_TEST || ALLOCATOR_MODULE)

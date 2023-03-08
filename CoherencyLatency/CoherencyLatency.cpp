@@ -14,6 +14,7 @@
 int main(int argc, char *argv[]) {
     //TimerResult **latencies;
     TimerStructure timer;
+    DataLog dlog;
     uint64_t iter = COHERENCYLAT_DEFAULT_ITERATIONS;
     int offsets = 1;
     CoherencyLatencyTestType test= RunCoherencyBounceTest;
@@ -41,11 +42,11 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    return CoherencyTestMain(offsets, iter, test, &timer);
+    return CoherencyTestMain(offsets, iter, test, &timer, &dlog);
 }
 #endif /*! COMPOUND_TEST*/
 
-int CoherencyTestMain(int offsets, int iterations, CoherencyLatencyTestType test, TimerStructure *timer){
+int CoherencyTestMain(int offsets, int iterations, CoherencyLatencyTestType test, TimerStructure *timer, DataLog *dlog){
     Ptr64b* bouncyBase;
     TimerResult **latencies;
     int numProcs = common_threading_get_num_cpu_cores();
@@ -59,7 +60,7 @@ int CoherencyTestMain(int offsets, int iterations, CoherencyLatencyTestType test
     if (ret < 0) return ret;
     
     CoherencyTestExecute(numProcs, offsets, iterations, bouncyBase, latencies, test, timer);
-    CoherencyTestPrintResults(numProcs, offsets, latencies);
+    CoherencyTestPrintResults(numProcs, offsets, latencies, dlog);
     // cleaning up
     CoherencyTestFreeResultsBuffers(offsets, latencies);
     CoherencyTestFreeTestBuffers(bouncyBase);
@@ -124,7 +125,7 @@ void CoherencyTestExecute(int numProcs, int offsets, int iterations, Ptr64b* bou
 }
 
 
-void CoherencyTestPrintResults(int numProcs, int offsets, TimerResult **latencies){
+void CoherencyTestPrintResults(int numProcs, int offsets, TimerResult **latencies, DataLog *dlog){
     for (int offsetIdx = 0; offsetIdx < offsets; offsetIdx++) {
         printf("Cache line offset: %d\n", offsetIdx);
         TimerResult* latenciesPtr = latencies[offsetIdx];
@@ -134,7 +135,10 @@ void CoherencyTestPrintResults(int numProcs, int offsets, TimerResult **latencie
             for (int j = 0;j < numProcs; j++) {
                 if (j != 0) printf(",");
                 if (j == i) printf("x");
-                else printf("%f", latenciesPtr[j + i * numProcs].result); //TODO replace with something generic that allows printing more details if we want. (ie, MSR counts)
+                else{ 
+                    printf("%f", latenciesPtr[j + i * numProcs].result); //TODO replace with something generic that allows printing more details if we want. (ie, MSR counts)
+                    common_datalogger_log_c2c(dlog, latenciesPtr[j + i * numProcs], "", i, j); // TODO: Check if src and dest aren't backwards... does it even matter?
+                }
             }
             printf("\n");
         }

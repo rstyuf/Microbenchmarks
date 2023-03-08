@@ -2,6 +2,10 @@
 #define COHERENCY_LATENCY_H
 
 #include "../common/common_common.h"
+#include "../common/common_timer.h"
+#include "../common/common_threading.h"
+#include "../common/common_datalogger.h"
+
 #define COHERENCYLAT_DEFAULT_ITERATIONS (10000000)
 typedef TimerResult (*CoherencyLatencyTestType)(unsigned int, unsigned int, uint64_t, Ptr64b*, TimerStructure*) ;
 
@@ -17,12 +21,12 @@ typedef struct LatencyThreadData_t {
     Ptr64b *readTarget;   // for read test, memory location to read from (owned by other core)
 } LatencyData;
 
-int CoherencyTestMain(int offsets, int iterations, CoherencyLatencyTestType test, TimerStructure *timer);
+int CoherencyTestMain(int offsets, int iterations, CoherencyLatencyTestType test, TimerStructure *timer, DataLog* dlog);
 int CoherencyTestAllocateTestBuffers(int offsets, int additional_cachelines, Ptr64b** BaseAddress);
 void CoherencyTestFreeTestBuffers(Ptr64b* BaseAddress);
 int CoherencyTestAllocateResultsBuffers(int numProcs, int offsets, TimerResult ***latencies);
 void CoherencyTestFreeResultsBuffers(int offsets, TimerResult **latencies);
 void CoherencyTestExecute(int numProcs, int offsets, int iterations, Ptr64b* bouncyBase, TimerResult **latencies, CoherencyLatencyTestType test, TimerStructure *timer);
-void CoherencyTestPrintResults(int numProcs, int offsets, TimerResult **latencies);
+void CoherencyTestPrintResults(int numProcs, int offsets, TimerResult **latencies, DataLog* dlog);
 
 #endif /*COHERENCY_LATENCY_H*/
