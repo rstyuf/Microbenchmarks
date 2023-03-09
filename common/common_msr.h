@@ -2,7 +2,7 @@
 #define COMMON_MSR_H
 //<includes>
 #include "common_common.h"
-#include "common_threading.h"
+//#include "common_threading.h"
 #if IS_WINDOWS(ENVTYPE)
 #include <windows.h>
 #include <tchar.h>
@@ -24,6 +24,8 @@
 #include <stdint.h>
 // </includes>
 
+
+
 typedef struct open_msr_descr_t{
     bool valid;//=false;
 #if IS_WINDOWS(ENVTYPE)
@@ -34,6 +36,7 @@ typedef struct open_msr_descr_t{
 #endif
     bool uncore_counters_enabled;
 } MsrDescriptor;
+
 
 #if IS_WINDOWS(ENVTYPE)
 MsrDescriptor _MSR_WIN_OpenWinring0Driver();
@@ -84,7 +87,7 @@ MsrDescriptor common_msr_open(){
 }
 
 
-uint64_t common_msr_read(MsrDescriptor fd, uint32_t addr){
+inline uint64_t common_msr_read(MsrDescriptor fd, uint32_t addr){
 #if IS_WINDOWS(ENVTYPE)
     return _MSR_WIN_ReadMsr( fd, addr);
 #elif IS_GCC_POSIX(ENVTYPE)
@@ -100,7 +103,7 @@ uint64_t common_msr_read(MsrDescriptor fd, uint32_t addr){
 }
 
 
-void common_msr_write(MsrDescriptor fd, uint32_t addr, uint64_t value){
+inline void common_msr_write(MsrDescriptor fd, uint32_t addr, uint64_t value){
 #if IS_WINDOWS(ENVTYPE)
      _MSR_WIN_WriteMsr(fd, addr, value);
      return;
@@ -188,7 +191,7 @@ void _MSR_WIN_CloseWinring0Driver(MsrDescriptor fd){
     //TODO!
 }
 
-uint64_t _MSR_WIN_ReadMsr(MsrDescriptor fd, uint32_t index)
+inline uint64_t _MSR_WIN_ReadMsr(MsrDescriptor fd, uint32_t index)
 {
     DWORD returnedLength;
     bool result;
@@ -225,7 +228,7 @@ typedef struct  _ols_write_msr_input_buf_t {
 } ols_write_msr_input_buf;
 
 
-uint64_t _MSR_WIN_WriteMsr(MsrDescriptor fd, uint32_t index, uint64_t value)
+inline uint64_t _MSR_WIN_WriteMsr(MsrDescriptor fd, uint32_t index, uint64_t value)
 {
     DWORD returnedLength;
     bool result;
@@ -285,6 +288,50 @@ int _MSR_LINUX_openMsr(int core) {
 
 
 #endif
+////////////////////////////////////////
+typedef struct msr_value_tracker_t{
+    uint16_t specific_core; //MAX_INT16 being for uncore or anyways locked core? Not yet implemented.
+    uint8_t usage_type; //0 for disabled, 1 for reads, 2 for read and zero? // Unimplemented yet
+    uint8_t value_fieldsize_bits; //wrap_around_bits;
+    uint32_t addr;
+    uint64_t last_value;
+} MsrValueTrack;
+
+inline uint64_t common_msr_get_update_delta(MsrDescriptor msrd, MsrValueTrack* tracker){
+    if (tracker->usage_type == 1){ //read:
+        uint64_t newval = common_msr_read(msrd, tracker->addr);
+        printf("ReadMsr: Addr %x got %lld   (oldval %lld) diff: %lld       (0x%llx)\n", tracker->addr, newval, tracker->last_value, newval-tracker->last_value, newval-tracker->last_value);
+        // should I seperate the read stage from the processing stage and do all reads first in one go?
+        //  and then process in one go? Reasoning: processing time might be significant enough to skew in some edge cases?
+        int64_t difference = newval - tracker->last_value;
+        if (difference < 0){
+            difference += (1<< tracker->value_fieldsize_bits);
+        }
+        tracker->last_value = newval;
+        return difference;
+    }
+    else if (tracker->usage_type == 2) { // Read and Zero
+        uint64_t newval = common_msr_read(msrd, tracker->addr);
+        printf("ReadMsrAndZero: Addr %x got %lld  (0x%llx)   \n", tracker->addr, newval, newval);
+        common_msr_write(msrd, tracker->addr, 0);
+
+        // should I seperate the read stage from the processing stage and do all reads first in one go?
+        //  and then process in one go? Reasoning: processing time might be significant enough to skew in some edge cases?
+        //int64_t difference = newval - tracker->last_value;
+        // if (difference < 0){
+        //     difference += (1<< tracker->value_fieldsize_bits);
+        // }
+        // tracker->last_value = newval;
+        return newval;
+
+    }
+    else{
+        return 0;
+    }
+}
+
+////////////////////////////////////////
+
 /*
 uint64_t startEnergy;
 

@@ -94,7 +94,9 @@ void* ThreadFunctionRunner(void* param){
 
 // Need to check if TimeThreads can be used generically in other places where threads are used, and maybe in that case it can be made more generic to different thread counts.
 // We can take the iter (and relevant print) out of the function, and then turn processorX and latX into two arrays, along with an int/size_t len which represents how many.
+
 #if IS_WINDOWS(ENVTYPE)
+
 TimerResult TimeThreads( TimeThreadData* thread_datas,
                          int thread_count,
                          TimerStructure* timer) {
@@ -136,7 +138,9 @@ TimerResult TimeThreads( TimeThreadData* thread_datas,
     free(tids);
     return timer_result;
 }
+
 #elif IS_GCC_POSIX(ENVTYPE) && !(defined(NEW_PT_TIMETHREADS))
+
 //TODO: Consider implementing more like the Windows implementation, using either pthread barriers or some other waiting system.
 TimerResult TimeThreads( TimeThreadData* thread_datas,
                          int thread_count,
@@ -162,7 +166,9 @@ TimerResult TimeThreads( TimeThreadData* thread_datas,
     common_timer_end(timer, &timer_result);    
     return timer_result;
 }
+
 #elif IS_GCC_POSIX(ENVTYPE) && (defined(NEW_PT_TIMETHREADS))
+
 TimerResult TimeThreads( TimeThreadData* thread_datas,
                          int thread_count,
                          TimerStructure* timer) {

@@ -1,20 +1,20 @@
-#ifdef ALTERNATE_TIMER_MSRS
-    #if ALTERNATE_TIMER_MSRS > 0
-    #include "alternative_implementations/commonalt_timer_withmsrs.h"
-    #endif
-#endif
-#ifndef COMMON_TIMER_H
+#ifndef COMMON_TIMER_MSR_H
+#define COMMON_TIMER_MSR_H
+#if ALTERNATE_TIMER_MSRS > 0
 #define COMMON_TIMER_H
 
 //<includes>
-#include "common_common.h"
+#include "../common_common.h"
 #if IS_WINDOWS(ENVTYPE)
 #include <sys\timeb.h>
 #elif IS_GCC_POSIX(ENVTYPE)
 #include <sys/time.h>
 #endif
 #include <stdint.h>
+#include "../common_msr.h"
 // </includes>
+
+
 typedef struct timer_structure_t{
 #if IS_WINDOWS(ENVTYPE)
     struct timeb start;
@@ -26,17 +26,25 @@ typedef struct timer_structure_t{
 
     struct timezone startTz;
     struct timezone endTz;
-#endif
+#endif 
+    MsrValueTrack msr_tracker[ALTERNATE_TIMER_MSRS];
+    MsrDescriptor msrd;
 } TimerStructure;
 
+bool print_time_normalized = false;
 
 typedef struct timer_result_t{
     int64_t time_dif_ms;
     double result;
+    uint64_t msr_results[ALTERNATE_TIMER_MSRS];
+    uint64_t iterations;
 } TimerResult;
 
 //Usage: "TimerStructure t; common_timer_start(&t);"
-inline void common_timer_start(TimerStructure* timer) {
+void common_timer_start(TimerStructure* timer) {
+    for (int i = 0; i < ALTERNATE_TIMER_MSRS; i++){ // TODO: Add cross platform hints to compiler to unroll completely?
+        common_msr_get_update_delta(timer->msrd, &(timer->msr_tracker[i]));
+    }    
 #if IS_WINDOWS(ENVTYPE)
     ftime(&(timer->start));
 #elif IS_GCC_POSIX(ENVTYPE)
@@ -44,7 +52,7 @@ inline void common_timer_start(TimerStructure* timer) {
 #endif
 } 
 
-inline void common_timer_end(TimerStructure* timer, TimerResult* results) {
+void common_timer_end(TimerStructure* timer, TimerResult* results) {
 #if IS_WINDOWS(ENVTYPE)
     ftime(&(timer->end));
     results->time_dif_ms = 1000 * (timer->end.time - timer->start.time) + (timer->end.millitm - timer->start.millitm);
@@ -53,23 +61,37 @@ inline void common_timer_end(TimerStructure* timer, TimerResult* results) {
     results->time_dif_ms = 1000 * (timer->endTv.tv_sec - timer->startTv.tv_sec) + ((timer->endTv.tv_usec - timer->startTv.tv_usec) / 1000);
 #endif
     results->result =  0;
+    for (int i = 0; i < ALTERNATE_TIMER_MSRS; i++){ // TODO:  Add cross platform hints to compiler to unroll completely?
+        results->msr_results[i] = common_msr_get_update_delta(timer->msrd, &(timer->msr_tracker[i]));
+    }   
 }
 
-inline void common_timer_result_process_iterations(TimerResult* results, unsigned int iterations_cnt) {
+void common_timer_result_process_iterations(TimerResult* results, unsigned int iterations_cnt) {
     if (iterations_cnt != 0)
         results->result = 1e6 * (float)results->time_dif_ms / (float)iterations_cnt;
     else
         results->result =  1e6 * (float)results->time_dif_ms; 
+    results->iterations = iterations_cnt;
 }
 
-inline void common_timer_result_process_bw(TimerResult* results, int transferred) {
+void common_timer_result_process_bw(TimerResult* results, int transferred) {
 //    double mbTransferred = ((iterations_cnt == 0 ? 1: iterations_cnt) * bw_per_itr)  / (double)1e6;
     results->result =  1000 * transferred / ((double)(results->time_dif_ms)); 
 }
 
-inline void common_timer_result_fprint(TimerResult* results, FILE* fd) {
+void common_timer_result_fprint(TimerResult* results, FILE* fd) {
 //    double mbTransferred = ((iterations_cnt == 0 ? 1: iterations_cnt) * bw_per_itr)  / (double)1e6;
-    fprintf(fd, "%f", results->result); 
+    fprintf(fd, "%f,", results->result); 
+    for (int i = 0; i < ALTERNATE_TIMER_MSRS; i++){ // TODO:  Add cross platform hints to compiler to unroll completely?
+        if (!print_time_normalized)
+            fprintf(fd, "%lld,", results->msr_results[i]); 
+        else{
+            fprintf(fd, "%f,", results->msr_results[i] /  ((double)(results->time_dif_ms))); 
+        }
+
+    }    
+    fprintf(fd, "%lld,", results->iterations); 
+
 }
 
 
@@ -149,4 +171,5 @@ inline TimerResult common_timer_result_difference(TimerResult A, TimerResult B) 
 } 
 
 
+#endif
 #endif
