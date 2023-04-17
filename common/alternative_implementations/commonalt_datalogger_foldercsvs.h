@@ -307,6 +307,7 @@ bool common_datalogger_swap_outfd(DataLog* dl, char* new_outfd_name){ // Note th
 //void common_datalogger_init_subtest(DataLog* dl, DataLoggerLogTypes logtype, char* subtest_name, bool incl_predef_note, int incl_predef_data_upto, char* test_name, int msrs_logged_cnt, char** msrs_logged_names){
 void common_datalogger_init_subtest(DataLog* dl, DataLoggerLogTypes logtype, char* subtest_name){
     FILE** fd = _common_datalogger_get_fd_for_type(dl, logtype);
+    dl->enable = true;
     int ret;
     fprintf(*fd, "////<< TestStart,%s, , ,\n", subtest_name);
     ret = snprintf(dl->active_subtest_name, STRUCT_STRING_MAX, "%s", subtest_name);

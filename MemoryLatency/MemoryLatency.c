@@ -10,7 +10,7 @@
 // TODO: possibly get this programatically
 #define PAGE_SIZE 4096
 #define CACHELINE_SIZE 64
-int default_test_sizes[] = { 2, 4, 8, 12, 16, 24, 32, 48, 64, 96, 128, 192, 256, 384, 512, 600, 768, 1024, 1536, 2048,
+int memlat_default_test_sizes[] = { 2, 4, 8, 12, 16, 24, 32, 48, 64, 96, 128, 192, 256, 384, 512, 600, 768, 1024, 1536, 2048,
                                3072, 4096, 5120, 6144, 8192, 10240, 12288, 16384, 24567, 32768, 65536, 98304,
                                131072, 262144, 393216, 524288, 1048576 }; //2097152 };
 
@@ -64,10 +64,10 @@ uint32_t ITERATIONS = 100000000;
 int main(int argc, char* argv[]) {
     uint32_t maxTestSizeMb = 0;
     uint32_t singleSize = 0;
-    uint32_t testSizeCount = sizeof(default_test_sizes) / sizeof(int);
+    uint32_t testSizeCount = sizeof(memlat_default_test_sizes) / sizeof(int);
     LatencyTestFunc testFunc = RunLatencyTest;
 
-    int* test_sizes = default_test_sizes;
+    int* test_sizes = memlat_default_test_sizes;
     int mlpTest = 0;  // if > 0, run MLP test with (value) levels of parallelism max
     int stlf = 0, hugePages = 0;
     int stlfPageEnd = 0, numa = 0, stlfLoadDistance = 0;
@@ -223,7 +223,9 @@ int main(int argc, char* argv[]) {
             printf("%d,%f\n", singleSize, testFunc(singleSize, ITERATIONS, hugePagesArr, &timer).result);
         }
     }
-
+    if (hugePagesArr != NULL){
+        common_mem_special_free(hugePagesArr);
+    }
     return 0;
 }
 #endif /*! COMPOUND_TEST*/

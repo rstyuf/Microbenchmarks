@@ -6,8 +6,12 @@
 #if IS_WINDOWS(ENVTYPE)
 #include <windows.h>
 #include <tchar.h>
-#include <windows.h>
 #include <intrin.h>
+
+#include <process.h>
+#define _WIN_MSR_AUTOLOADER_PATH_LOAD "DriverLoader\\DriverLoader.exe load"
+#define _WIN_MSR_AUTOLOADER_PATH_UNLOAD "DriverLoader\\DriverLoader.exe unload"
+
 #elif IS_GCC_POSIX(ENVTYPE)
 #include <sys/sysinfo.h>
 #include <sys/mman.h>
@@ -55,6 +59,11 @@ void _MSR_LINUX_detectCpuMaker();
 
 MsrDescriptor common_msr_open(){
 #if IS_WINDOWS(ENVTYPE)
+#ifdef _WIN_MSR_AUTOLOADER_PATH_LOAD
+    //TODO! Requires some set path?
+    system(_WIN_MSR_AUTOLOADER_PATH_LOAD);
+#endif
+
     return _MSR_WIN_OpenWinring0Driver();
 #elif IS_GCC_POSIX(ENVTYPE)
     MsrDescriptor msr_d;
@@ -188,7 +197,11 @@ MsrDescriptor _MSR_WIN_OpenWinring0Driver()
 #define _MSR_WIN_IOCTL_OLS_READ_MSR CTL_CODE(_MSR_WIN_OLS_TYPE, 0x821, METHOD_BUFFERED, FILE_ANY_ACCESS)
 #define _MSR_WIN_IOCTL_OLS_WRITE_MSR CTL_CODE(_MSR_WIN_OLS_TYPE, 0x822, METHOD_BUFFERED, FILE_ANY_ACCESS)
 void _MSR_WIN_CloseWinring0Driver(MsrDescriptor fd){
-    //TODO!
+#ifdef _WIN_MSR_AUTOLOADER_PATH_UNLOAD
+    //TODO! Requires some set path?
+    system(_WIN_MSR_AUTOLOADER_PATH_UNLOAD);
+#endif
+
 }
 
 inline uint64_t _MSR_WIN_ReadMsr(MsrDescriptor fd, uint32_t index)
@@ -300,7 +313,7 @@ typedef struct msr_value_tracker_t{
 inline uint64_t common_msr_get_update_delta(MsrDescriptor msrd, MsrValueTrack* tracker){
     if (tracker->usage_type == 1){ //read:
         uint64_t newval = common_msr_read(msrd, tracker->addr);
-        printf("ReadMsr: Addr %x got %lld   (oldval %lld) diff: %lld       (0x%llx)\n", tracker->addr, newval, tracker->last_value, newval-tracker->last_value, newval-tracker->last_value);
+        //printf("ReadMsr: Addr %x got %lld   (oldval %lld) diff: %lld       (0x%llx)\n", tracker->addr, newval, tracker->last_value, newval-tracker->last_value, newval-tracker->last_value);
         // should I seperate the read stage from the processing stage and do all reads first in one go?
         //  and then process in one go? Reasoning: processing time might be significant enough to skew in some edge cases?
         int64_t difference = newval - tracker->last_value;
@@ -312,7 +325,7 @@ inline uint64_t common_msr_get_update_delta(MsrDescriptor msrd, MsrValueTrack* t
     }
     else if (tracker->usage_type == 2) { // Read and Zero
         uint64_t newval = common_msr_read(msrd, tracker->addr);
-        printf("ReadMsrAndZero: Addr %x got %lld  (0x%llx)   \n", tracker->addr, newval, newval);
+        //printf("ReadMsrAndZero: Addr %x got %lld  (0x%llx)   \n", tracker->addr, newval, newval);
         common_msr_write(msrd, tracker->addr, 0);
 
         // should I seperate the read stage from the processing stage and do all reads first in one go?
