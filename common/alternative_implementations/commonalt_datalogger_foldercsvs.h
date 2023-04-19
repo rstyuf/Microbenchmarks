@@ -31,6 +31,7 @@
 typedef struct datalogger_structure_t{
     bool enable;
 
+    bool enable_logfd_out;
     FILE* log_fd_output;
 
     char testset_name_ts_folder[STRUCT_STRING_MAX];
@@ -296,11 +297,15 @@ void common_datalogger_close_all(DataLog* dl){
     fclose(dl->log_fd_extra_undef);
 }
 
-bool common_datalogger_swap_outfd(DataLog* dl, char* new_outfd_name){ // Note that if the same name is reused it will overwrite!
+bool common_datalogger_swap_outfd(DataLog* dl, char* new_outfd_name, bool enabled){ // Note that if the same name is reused it will overwrite!
     fclose(dl->log_fd_output);
-    bool ret = common_datalogger_init_test_file(dl,  DATA_LOGGER_LOG_TYPES_OUTPUTFD, new_outfd_name);
-    if (!ret) return ret;
-
+    if (enabled){
+        bool ret = common_datalogger_init_test_file(dl,  DATA_LOGGER_LOG_TYPES_OUTPUTFD, new_outfd_name);
+        if (!ret) return ret;
+        dl->enable_logfd_out = true;
+    } else {
+        dl->enable_logfd_out = false;
+    }
     return true;
 }
 
@@ -385,12 +390,28 @@ void common_datalogger_log_latency_stlf(DataLog* dl, TimerResult result, const c
     common_timer_result_fprint(&result, dl->log_fd_stlf);
     fprintf(dl->log_fd_stlf, ",%s, %s,%d,%d,%d,%d,\n", (notes == NULL? "": notes), dl->predef_note, dl->predef_data1,dl->predef_data2,dl->predef_data3,dl->predef_data4);   
 }
+
 FILE* common_datalogger_log_getfd(DataLog* dl){
-    if (dl == NULL || !(dl->enable))
+    if (dl == NULL || !(dl->enable_logfd_out))
         return stdout;
     ///
     return dl->log_fd_output;
 }   
+
+char* common_datalogger_get_testset_folder_name(DataLog* dl){
+    return dl->testset_name_ts_folder;
+}
+void common_datalogger_set_predef(DataLog* dl, int predef, int indx){
+    if (indx == 1){
+        dl->predef_data1 = predef;
+    } else if (indx == 2){
+        dl->predef_data2 = predef;
+    } else if (indx == 3){
+        dl->predef_data3 = predef;
+    } else if (indx == 4){
+        dl->predef_data4 = predef;
+    } 
+}
 
 
 #endif /*ALTERNATE_DATALOGGER == 1*/

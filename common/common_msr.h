@@ -9,8 +9,13 @@
 #include <intrin.h>
 
 #include <process.h>
+#ifdef QUIET_OUTPUT
+#define _WIN_MSR_AUTOLOADER_PATH_LOAD "DriverLoader\\DriverLoader.exe load silent"
+#define _WIN_MSR_AUTOLOADER_PATH_UNLOAD "DriverLoader\\DriverLoader.exe unload silent"
+#else
 #define _WIN_MSR_AUTOLOADER_PATH_LOAD "DriverLoader\\DriverLoader.exe load"
 #define _WIN_MSR_AUTOLOADER_PATH_UNLOAD "DriverLoader\\DriverLoader.exe unload"
+#endif
 
 #elif IS_GCC_POSIX(ENVTYPE)
 #include <sys/sysinfo.h>

@@ -234,12 +234,16 @@ void RunAllLatencyTestSizes(int* test_sizes, uint32_t testSizeCount, uint32_t * 
     if (iterations == 0)
         iterations = ITERATIONS;
 
+    #ifndef QUIET_OUTPUT
     printf("Region,Latency (ns)\n");
+    #endif
 
     for (int i = 0; i < testSizeCount; i++) {
         if ((maxTestSizeMb == 0) || (test_sizes[i] <= maxTestSizeMb * 1024)) {
             TimerResult testresult = testFunc(test_sizes[i], iterations, preallocArr, timer);
+            #ifndef QUIET_OUTPUT
             printf("%d,%f\n", test_sizes[i], testresult.result);
+            #endif
             common_datalogger_log_latency(dlog, testresult, " ", test_sizes[i]);
         }
         else {
@@ -255,7 +259,9 @@ void MlpTestMain(int mlpTestParallelismMax, int* test_sizes, uint32_t testSizeCo
     for (int size_idx = 0; size_idx < testSizeCount; size_idx++) {
         for (int parallelism = 0; parallelism < mlpTestParallelismMax; parallelism++) {
             results[size_idx * mlpTestParallelismMax + parallelism] = RunMlpTest(test_sizes[size_idx], ITERATIONS, parallelism + 1, timer);
+            #ifndef QUIET_OUTPUT
             printf("%d KB, %dx parallelism, %f MB/s\n", test_sizes[size_idx], parallelism + 1, results[size_idx * mlpTestParallelismMax + parallelism].result);
+            #endif
             common_datalogger_log_bandwidth_mlp(dlog, results[size_idx * mlpTestParallelismMax + parallelism], "", test_sizes[size_idx], parallelism+1);
         }
     }
@@ -411,7 +417,12 @@ TimerResult RunLatencyTest(uint32_t size_kb, uint32_t iterations, uint32_t *prea
 
     if (preallocatedArr == NULL) free(A);
 
+    #ifndef QUIET_OUTPUT
     if (sum == 0) printf("sum == 0 (?)\n");
+    #else // Quiet version
+    if (sum == 0) printf(" ");
+    #endif
+
     return timer_result;
 }
 
@@ -455,8 +466,11 @@ TimerResult RunMlpTest(uint32_t size_kb, uint32_t iterations, uint32_t paralleli
     
     sum = 0;
     for (int i = 0; i < parallelism; i++) sum += offsets[i];
+    #ifndef QUIET_OUTPUT
     if (sum == 0) printf("sum == 0 (?)\n");
-
+    #else // Quiet version
+    if (sum == 0) printf(" ");
+    #endif
     free(A);
     free (offsets);
     return timer_result;
@@ -502,8 +516,12 @@ TimerResult RunAsmLatencyTest(uint32_t size_kb, uint32_t iterations, uint32_t *p
     common_timer_result_process_iterations(&timer_result, scaled_iterations);
 
     if (preallocatedArr == NULL) free(A);
-
+    
+    #ifndef QUIET_OUTPUT
     if (sum == 0) printf("sum == 0 (?)\n");
+    #else // Quiet version
+    if (sum == 0) printf(" ");
+    #endif
     return timer_result;
 }
 #endif
@@ -581,9 +599,12 @@ TimerResult RunTlbRawLatencyTest(uint32_t size_kb, uint32_t iterations, uint32_t
     common_timer_end(timer, &timer_result);
     common_timer_result_process_iterations(&timer_result, scaled_iterations);
     if (preallocatedArr == NULL) free(A);
-
+    
+    #ifndef QUIET_OUTPUT
     if (element_count > 1 && sum == 0) printf("sum == 0 (?)\n");
-
+    #else // Quiet version
+    if (sum == 0) printf(" ");
+    #endif  
     return timer_result;
 }
 
@@ -650,7 +671,9 @@ void StlfTestMain(uint32_t iterations, int mode, int pageEnd, int loadDistance, 
             stlfFunc(iterations, arr);
             common_timer_end(timer, &(stlfResults[storeOffset][loadOffset]));
             common_timer_result_process_iterations(&(stlfResults[storeOffset][loadOffset]), iterations);
+            #ifndef QUIET_OUTPUT
             fprintf(stderr, "Store offset %d, load offset %d: %f ns\n", storeOffset, loadOffset, (stlfResults[storeOffset][loadOffset]).result);
+            #endif
         }
 
     // output as CSV

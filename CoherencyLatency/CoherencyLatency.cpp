@@ -50,8 +50,9 @@ int CoherencyTestMain(int offsets, int iterations, CoherencyLatencyTestType test
     Ptr64b* bouncyBase;
     TimerResult **latencies;
     int numProcs = common_threading_get_num_cpu_cores();
+    #ifndef QUIET_OUTPUT
     fprintf(stderr, "Number of CPUs: %u\n", numProcs);
-
+    #endif
     int ret;
     ret = CoherencyTestAllocateTestBuffers(offsets, (test == RunCoherencyOwnedTest? 1:0), &bouncyBase);
     if (ret < 0) return ret;
@@ -126,21 +127,22 @@ void CoherencyTestExecute(int numProcs, int offsets, int iterations, Ptr64b* bou
 
 
 void CoherencyTestPrintResults(int numProcs, int offsets, TimerResult **latencies, DataLog *dlog){
+    FILE* dlogfd = common_datalogger_log_getfd(dlog);
     for (int offsetIdx = 0; offsetIdx < offsets; offsetIdx++) {
-        printf("Cache line offset: %d\n", offsetIdx);
+        fprintf(dlogfd, "Cache line offset: %d\n", offsetIdx);
         TimerResult* latenciesPtr = latencies[offsetIdx];
 
         // print thing to copy to excel
         for (int i = 0;i < numProcs; i++) {
             for (int j = 0;j < numProcs; j++) {
-                if (j != 0) printf(",");
-                if (j == i) printf("x");
+                if (j != 0) fprintf(dlogfd, ",");
+                if (j == i) fprintf(dlogfd, "x");
                 else{ 
-                    printf("%f", latenciesPtr[j + i * numProcs].result); //TODO replace with something generic that allows printing more details if we want. (ie, MSR counts)
+                    fprintf(dlogfd, "%f", latenciesPtr[j + i * numProcs].result); //TODO replace with something generic that allows printing more details if we want. (ie, MSR counts)
                     common_datalogger_log_c2c(dlog, latenciesPtr[j + i * numProcs], "", i, j); // TODO: Check if src and dest aren't backwards... does it even matter?
                 }
             }
-            printf("\n");
+            fprintf(dlogfd, "\n");
         }
         //free(latenciesPtr);// Now done seperately
     }
@@ -176,7 +178,9 @@ TimerResult RunCoherencyBounceTest(unsigned int processor1, unsigned int process
     latency = TimeThreads(timerthreads, 2, timer);
 
     common_timer_result_process_iterations(&latency, iter *2);
+    #ifndef QUIET_OUTPUT
     fprintf(stderr, "%d to %d: %f ns\n", processor1, processor2, latency.result*2 ); //Lat Multiplied by 2 to get previous behavior
+    #endif
     return latency;
 }
 
@@ -215,7 +219,10 @@ TimerResult RunCoherencyOwnedTest(unsigned int processor1, unsigned int processo
 
     latency = TimeThreads(timerthreads, 2, timer);
     common_timer_result_process_iterations(&latency, iter *2);
+    #ifndef QUIET_OUTPUT
     fprintf(stderr, "%d to %d: %f ns\n", processor1, processor2, latency.result*2 ); //Lat Multiplied by 2 to get previous behavior
+    #endif
+
     return latency;
 }
 
