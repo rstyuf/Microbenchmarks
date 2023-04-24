@@ -139,6 +139,9 @@
 #define IS_ISA_AARCH64(env) (((env%BUILDENV_GROUP_RANGE_SIZE)/ISA_GROUP_RANGE_SIZE) ==  ISA_AARCH64_VAL)
 #define IS_ISA_ARM32(env) (((env%BUILDENV_GROUP_RANGE_SIZE)/ISA_GROUP_RANGE_SIZE) ==  ISA_ARM32_VAL)
 
+#define IS_64BITS(env) (POINTER_SIZE == 8)
+#define IS_32BITS(env) (POINTER_SIZE == 4)
+
 #define NOT_IMPLEMENTED_YET(feature_name, envs_data) do{fprintf(stderr, "ERROR:%s is not implemented as compiled! It is probably not supported on configuration/HW. Support: %s\n",feature_name, envs_data);exit(-1);}while(0)
 
 #include <stdio.h>

@@ -14,7 +14,7 @@ int memlat_default_test_sizes[] = { 2, 4, 8, 12, 16, 24, 32, 48, 64, 96, 128, 19
                                3072, 4096, 5120, 6144, 8192, 10240, 12288, 16384, 24567, 32768, 65536, 98304,
                                131072, 262144, 393216, 524288, 1048576 }; //2097152 };
 
-#ifdef __x86_64
+#if IS_ISA_X86_64(ENVTYPE)
 extern void preplatencyarr(uint64_t *arr, uint64_t len) __attribute__((ms_abi));
 extern uint32_t latencytest(uint64_t iterations, uint64_t *arr) __attribute((ms_abi));
 extern void stlftest(uint64_t iterations, char *arr) __attribute((ms_abi));
@@ -22,14 +22,14 @@ extern void matchedstlftest(uint64_t iterations, char *arr) __attribute((ms_abi)
 extern void stlftest32(uint64_t iterations, char *arr) __attribute((ms_abi));
 extern void stlftest128(uint64_t iterations, char *arr) __attribute((ms_abi));
 void (*stlfFunc)(uint64_t, char *) __attribute__((ms_abi)) = stlftest;
-#elif __i686
+#elif  IS_ISA_X86_i686(ENVTYPE)
 extern void preplatencyarr(uint32_t *arr, uint32_t len) __attribute__((fastcall));
 extern uint32_t latencytest(uint32_t iterations, uint32_t *arr) __attribute((fastcall));
 extern void stlftest(uint32_t iterations, char *arr) __attribute((fastcall));
 extern void matchedstlftest(uint32_t iterations, char *arr) __attribute((fastcall));
 void (*stlfFunc)(uint32_t, char *) __attribute__((fastcall)) = stlftest;
-#define BITS_32
-#elif __aarch64__
+//#define BITS_32
+#elif IS_ISA_AARCH64(ENVTYPE)
 extern void preplatencyarr(uint64_t *arr, uint64_t len);
 extern uint32_t late2ncytest(uint64_t iterations, uint64_t *arr);
 extern void matchedstlftest(uint64_t iterations, char *arr);
