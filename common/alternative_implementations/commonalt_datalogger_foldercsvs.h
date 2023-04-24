@@ -314,7 +314,14 @@ void common_datalogger_init_subtest(DataLog* dl, DataLoggerLogTypes logtype, cha
     FILE** fd = _common_datalogger_get_fd_for_type(dl, logtype);
     dl->enable = true;
     int ret;
-    fprintf(*fd, "////<< TestStart,%s, , ,\n", subtest_name);
+    fprintf(*fd, "//<<Test,%s,<parallelism>,<src>,<dst>,<sizekb>, <cleanResults>,", subtest_name);
+    #ifdef ALTERNATE_TIMER_MSRS
+    for (int i = 0; i < ALTERNATE_TIMER_MSRS; i++){
+        fprintf(*fd, "<msr %d raw>,", i);
+    }
+    fprintf(*fd, "<iterations>,");
+    #endif
+    fprintf(*fd, ",<notes>, <predefnote>, <predef1>, <predef2>, <predef3>, <predef4>,,,\n");
     ret = snprintf(dl->active_subtest_name, STRUCT_STRING_MAX, "%s", subtest_name);
     if (ret <= 0 ){
         printf("Error: Testset file name generation (1) failure. Returned: %d\n  \n", ret);
@@ -350,42 +357,42 @@ void common_datalogger_init_subtest(DataLog* dl, DataLoggerLogTypes logtype, cha
 
 
 void common_datalogger_log_latency(DataLog* dl, TimerResult result, const char* notes, int sizekb){
-    fprintf(dl->log_fd_memlatency, "%s,, , , %d,", dl->active_subtest_name, sizekb);
+    fprintf(dl->log_fd_memlatency, ",%s,, , , %d,", dl->active_subtest_name, sizekb);
     //Print result
     common_timer_result_fprint(&result, dl->log_fd_memlatency);
     fprintf(dl->log_fd_memlatency, ",%s, %s,%d,%d,%d,%d,\n", (notes == NULL? "": notes), dl->predef_note, dl->predef_data1,dl->predef_data2,dl->predef_data3,dl->predef_data4);
 }
 
 void common_datalogger_log_latency_crossnode(DataLog* dl, TimerResult result, const char* notes, int sizekb, int src_node, int dest_node){
-    fprintf(dl->log_fd_memlatency, "%s,, %d, %d, %d,", dl->active_subtest_name, src_node, dest_node, sizekb);
+    fprintf(dl->log_fd_memlatency, ",%s,, %d, %d, %d,", dl->active_subtest_name, src_node, dest_node, sizekb);
     //Print result
     common_timer_result_fprint(&result, dl->log_fd_memlatency);
     fprintf(dl->log_fd_memlatency, ",%s, %s,%d,%d,%d,%d,\n", (notes == NULL? "": notes),dl->predef_note, dl->predef_data1,dl->predef_data2,dl->predef_data3,dl->predef_data4);
 }
 
 void common_datalogger_log_c2c(DataLog* dl, TimerResult result, const char* notes, int src_core, int dest_core){
-    fprintf(dl->log_fd_c2c, "%s,, %d, %d, ,", dl->active_subtest_name, src_core, dest_core);
+    fprintf(dl->log_fd_c2c, ",%s,, %d, %d, ,", dl->active_subtest_name, src_core, dest_core);
     //Print result
     common_timer_result_fprint(&result, dl->log_fd_c2c);
     fprintf(dl->log_fd_c2c, ",%s, %s,%d,%d,%d,%d,\n", (notes == NULL? "": notes),dl->predef_note, dl->predef_data1,dl->predef_data2,dl->predef_data3,dl->predef_data4);    
 }
 
 void common_datalogger_log_bandwidth(DataLog* dl, TimerResult result, const char* notes, int sizekb, int threads){
-    fprintf(dl->log_fd_membw, "%s, %d, , , %d,", dl->active_subtest_name, threads, sizekb);
+    fprintf(dl->log_fd_membw, ",%s, %d, , , %d,", dl->active_subtest_name, threads, sizekb);
     //Print result
     common_timer_result_fprint(&result, dl->log_fd_membw);
     fprintf(dl->log_fd_membw, ",%s, %s,%d,%d,%d,%d,\n", (notes == NULL? "": notes),dl->predef_note, dl->predef_data1,dl->predef_data2,dl->predef_data3,dl->predef_data4);    
 
 }
 void common_datalogger_log_bandwidth_mlp(DataLog* dl, TimerResult result, const char* notes, int sizekb, int parallelism){
-    fprintf(dl->log_fd_mlp, "%s, %d, , , %d,", dl->active_subtest_name, parallelism, sizekb);
+    fprintf(dl->log_fd_mlp, ",%s, %d, , , %d,", dl->active_subtest_name, parallelism, sizekb);
     //Print result
     common_timer_result_fprint(&result, dl->log_fd_mlp);
     fprintf(dl->log_fd_mlp, ",%s, %s,%d,%d,%d,%d,\n", (notes == NULL? "": notes),dl->predef_note, dl->predef_data1,dl->predef_data2,dl->predef_data3,dl->predef_data4);   
 }
 
 void common_datalogger_log_latency_stlf(DataLog* dl, TimerResult result, const char* notes, int store_offset, int load_offset){
-    fprintf(dl->log_fd_stlf, "%s, , %d, %d, ,", dl->active_subtest_name, store_offset, load_offset);
+    fprintf(dl->log_fd_stlf, ",%s, , %d, %d, ,", dl->active_subtest_name, store_offset, load_offset);
     //Print result
     common_timer_result_fprint(&result, dl->log_fd_stlf);
     fprintf(dl->log_fd_stlf, ",%s, %s,%d,%d,%d,%d,\n", (notes == NULL? "": notes), dl->predef_note, dl->predef_data1,dl->predef_data2,dl->predef_data3,dl->predef_data4);   
