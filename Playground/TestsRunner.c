@@ -145,7 +145,7 @@ int test_runner_main(bool msr_perf, int large_pg, struct core_run_conf_t* core_p
 
     uint32_t * dataArr = NULL;
     if (large_pg > 0) {
-        dataArr = (uint32_t* ) common_mem_malloc_special(max_test_size*1024, 0, true, COMMON_MEM_ALLOC_NUMA_DISABLED);
+        dataArr = (uint32_t* ) common_mem_malloc_special(max_test_size*1024, 0, true, NULL);
         if (dataArr == NULL && large_pg == 1) {
             printf("Large Page allocation failed and is configured to be mandatory. Make sure that we are running as Administrator and Large Pages are enabled. If this persists, try a reboot.\n");
             return -1;

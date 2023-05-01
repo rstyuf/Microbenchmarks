@@ -35,6 +35,7 @@ struct allocation_record_t {
 #define ALLOC_TYPE_WIN_ALIGNED_ALLOC (4)
 #define ALLOC_TYPE_WIN_VIRTUAL_ALLOC (5)
 #define ALLOC_TYPE_WIN_VIRTUAL_EX_ALLOC (6)
+#define ALLOC_TYPE_WIN_VIRTUAL_ALLOC_2 (7)
 
 #define MAX_NUMA_NODES (64)
 
@@ -129,19 +130,55 @@ bool common_mem_GetPrivilege()
 }
 #endif /*IS_WINDOWS*/
 
+typedef struct special_malloc_extra_params_t{
+    int numa_memory_node;// = -1; // numa_memory_node<0 disables any numa specialization.
+    bool permit_read;// = true;
+    bool permit_write;// = true;
+    bool permit_exec;// = false;
+    bool guarantee_protectable;// = false;
+    uint64_t ext_protect;// = 0;
+} SpecialAllocExtraParams;
 
-Ptr64b* common_mem_malloc_special(size_t size_to_alloc, size_t alignment, bool attempt_hugepage, int numa_memory_node){ // numa_memory_node<0 disables any numa specialization.
+void common_mem_struct_init_SpecialAllocExtraParams(SpecialAllocExtraParams* e){ 
+    if (e== NULL) return;
+    e->numa_memory_node = -1; // numa_memory_node<0 disables any numa specialization.
+    e->permit_read = true;
+    e->permit_write = true;
+    e->permit_exec = false;
+    e->guarantee_protectable = false;
+    e->ext_protect = 0;
+}
+
+Ptr64b* common_mem_malloc_special(size_t size_to_alloc, size_t alignment, bool attempt_hugepage, SpecialAllocExtraParams *extras){ 
+    SpecialAllocExtraParams *e = NULL;
+    SpecialAllocExtraParams default_params;
+    if (extras == NULL){   
+        common_mem_struct_init_SpecialAllocExtraParams(&default_params);
+        e = &default_params;
+    } else{
+      e = extras;
+    }
     int allocation_record_index = 0;
-    for (; allocation_record_index < MAX_ALLOCATIONS_PER_RUN; allocation_record_index){
+    for (; allocation_record_index < MAX_ALLOCATIONS_PER_RUN; allocation_record_index++){
         if (allocations[allocation_record_index].type == ALLOC_TYPE_UNUSED) break;
     }
+    
     if (allocation_record_index == MAX_ALLOCATIONS_PER_RUN){
         fprintf(stderr, "Out of Allocation Record slots! Can not allocate again :-(\n");
         return NULL;
     }
     #if IS_WINDOWS(ENVTYPE)
-
     DWORD allocationType = MEM_RESERVE | MEM_COMMIT;
+    DWORD protectType = PAGE_READWRITE;
+    if      ( (e->permit_read) &&  (e->permit_write) &&  (e->permit_exec))  { protectType = PAGE_EXECUTE_READWRITE; }
+    else if ( (e->permit_read) &&  (e->permit_write) && !(e->permit_exec))  { protectType = PAGE_READWRITE; }
+    else if ( (e->permit_read) && !(e->permit_write) &&  (e->permit_exec))  { protectType = PAGE_EXECUTE_READ; }
+    else if ( (e->permit_read) && !(e->permit_write) && !(e->permit_exec))  { protectType = PAGE_READONLY; }
+    else {
+        fprintf(stderr, "Unimplemented PROTECT type\n");
+        return NULL;
+    }
+
     if (attempt_hugepage) {
         common_mem_GetPrivilege();
         allocationType |= MEM_LARGE_PAGES;
@@ -149,7 +186,34 @@ Ptr64b* common_mem_malloc_special(size_t size_to_alloc, size_t alignment, bool a
         size_to_alloc = (((size_to_alloc - 1) / hugePageSize) + 1) * hugePageSize; // rounded up to nearest hugepage
     }
     Ptr64b* alloc_ptr = NULL;
-    if (!attempt_hugepage && numa_memory_node < 0) {
+
+    /*
+    Worth looking into using VirtualAlloc2 instead of the mismesh we have now but too much work for now
+    if (true) {//(e->numa_memory_node < 0 || e->guarantee_protectable) {
+        MEM_EXTENDED_PARAMETER params = {0};
+
+
+        alloc_ptr = (Ptr64b*) VirtualAlloc2(NULL,
+                                            size_to_alloc,
+                                            allocationType, 
+                                            protectType);
+        if (alloc_ptr == NULL)
+        {
+            fprintf(stderr, "Failed to get memory via VirtualAlloc2: %d\n", GetLastError());
+            return alloc_ptr;
+        }
+        allocations[allocation_record_index].ptr = alloc_ptr; 
+        allocations[allocation_record_index].type = ALLOC_TYPE_WIN_VIRTUAL_ALLOC_2;
+        allocations[allocation_record_index].len = size_to_alloc;
+        allocations[allocation_record_index].req_alignment = alignment;
+        allocations[allocation_record_index].req_hugepage = attempt_hugepage;
+        return alloc_ptr;
+    }
+
+
+    */
+
+    if (!attempt_hugepage && e->numa_memory_node < 0 && !(e->guarantee_protectable)) {
         alloc_ptr = (Ptr64b*)_aligned_malloc(size_to_alloc, alignment);
         if (alloc_ptr  == NULL) return alloc_ptr;
         allocations[allocation_record_index].ptr = alloc_ptr; 
@@ -159,11 +223,11 @@ Ptr64b* common_mem_malloc_special(size_t size_to_alloc, size_t alignment, bool a
         allocations[allocation_record_index].req_hugepage = attempt_hugepage;
         return alloc_ptr;
     }
-    if (numa_memory_node < 0) {
+    if (e->numa_memory_node < 0 || e->guarantee_protectable) {
         alloc_ptr = (Ptr64b*) VirtualAlloc(NULL,
                                             size_to_alloc,
                                             allocationType, 
-                                            PAGE_READWRITE);
+                                            protectType);
         if (alloc_ptr == NULL)
         {
             fprintf(stderr, "Failed to get memory via VirtualAlloc: %d\n", GetLastError());
@@ -183,8 +247,8 @@ Ptr64b* common_mem_malloc_special(size_t size_to_alloc, size_t alignment, bool a
                                                  NULL,
                                                  size_to_alloc,
                                                  allocationType,
-                                                 PAGE_READWRITE,
-                                                 numa_memory_node);
+                                                 protectType,
+                                                 e->numa_memory_node);
         if (alloc_ptr == NULL)
             {
                 fprintf(stderr, "Failed to get memory via VirtualExAlloc: %d\n", GetLastError());
@@ -202,8 +266,9 @@ Ptr64b* common_mem_malloc_special(size_t size_to_alloc, size_t alignment, bool a
     #elif IS_GCC_POSIX(ENVTYPE)
 
     size_t hugePageSize = 1 << 21;
+    size_t regularPageSize = 1 << 12;
     Ptr64b* alloc_ptr;
-    if (!attempt_hugepage && numa_memory_node < 0) {
+    if (!attempt_hugepage && e->numa_memory_node < 0) {
         if (0 != posix_memalign((void **)(&alloc_ptr), alignment, size_to_alloc)) {
             fprintf(stderr, "Failed to allocate aligned memory\n");
             alloc_ptr = NULL;
@@ -216,13 +281,19 @@ Ptr64b* common_mem_malloc_special(size_t size_to_alloc, size_t alignment, bool a
         }
         return alloc_ptr;
     }
+    int page_size = (attempt_hugepage?hugePageSize:regularPageSize)
     size_t alloc_size = (((size_to_alloc - 1) / hugePageSize) + 1) * hugePageSize; // rounded up to nearest hugepage
-    if (attempt_hugepage){
+    if (attempt_hugepage || e->guarantee_protectable){// || e->numa_memory_node){
         fprintf(stderr, "mmap-ing %lu bytes\n", alloc_size);
-        alloc_ptr = mmap(NULL, alloc_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB, -1, 0);
+        int prot = 0;
+        prot |= (e->permit_read)? PROT_READ :0;
+        prot |= (e->permit_write)? PROT_WRITE :0;
+        prot |= (e->permit_exec)? PROT_EXEC :0;
+        
+        alloc_ptr = mmap(NULL, alloc_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | (attempt_hugepage?MAP_HUGETLB:0), -1, 0);
         if (alloc_ptr == (void *)-1) { // on failure, mmap will return MAP_FAILED, or (void *)-1
-            fprintf(stderr, "Failed to mmap huge pages, errno %d = %s\n", errno, strerror(errno));
-            if (numa_memory_node < 0){
+            fprintf(stderr, "Failed to mmap %s pages, errno %d = %s\n", (attempt_hugepage?"huge":""),errno, strerror(errno));
+            if (e->numa_memory_node < 0){
                 fprintf(stderr, "Will try to use madvise\n");
                 if (0 != posix_memalign((void **)(&alloc_ptr), hugePageSize, alloc_size)) {
                     fprintf(stderr, "Failed to allocate 2 MB aligned memory, will not use hugepages\n");
@@ -245,8 +316,8 @@ Ptr64b* common_mem_malloc_special(size_t size_to_alloc, size_t alignment, bool a
             allocations[allocation_record_index].req_hugepage = attempt_hugepage;
         }
     }
-    if (numa_memory_node >= 0 && allocations[allocation_record_index].type == ALLOC_TYPE_MMAP){
-        uint64_t nodeMask = 1UL << numa_memory_node;
+    if (e->numa_memory_node >= 0 && allocations[allocation_record_index].type == ALLOC_TYPE_MMAP){
+        uint64_t nodeMask = 1UL << e->numa_memory_node;
         fprintf(stderr, "mbind-ing pre-allocated arr, size %lu bytes\n", alloc_size);
         long mbind_rc = mbind(alloc_ptr, alloc_size, MPOL_BIND, &nodeMask, 64, MPOL_MF_STRICT | MPOL_MF_MOVE);
         fprintf(stderr, "mbind returned %ld\n", mbind_rc);
@@ -254,8 +325,8 @@ Ptr64b* common_mem_malloc_special(size_t size_to_alloc, size_t alignment, bool a
             fprintf(stderr, "errno: %d\n", errno);
             return alloc_ptr;
         }
-    } else if (numa_memory_node >= 0){
-        alloc_ptr = numa_alloc_onnode(alloc_size, numa_memory_node);
+    } else if (e->numa_memory_node >= 0){
+        alloc_ptr = numa_alloc_onnode(alloc_size, e->numa_memory_node);
         if (alloc_ptr == NULL) {
             fprintf(stderr, "Allocationg NUMA alloc onnode failed!\n");
             return NULL;
@@ -280,7 +351,7 @@ Ptr64b* common_mem_malloc_special(size_t size_to_alloc, size_t alignment, bool a
 
 void common_mem_special_free(Ptr64b* ptr){
     int allocation_record_index = 0;
-    for (; allocation_record_index < MAX_ALLOCATIONS_PER_RUN; allocation_record_index){
+    for (; allocation_record_index < MAX_ALLOCATIONS_PER_RUN; allocation_record_index++){
         if (allocations[allocation_record_index].ptr == ptr) break;
     }
     if (allocation_record_index == MAX_ALLOCATIONS_PER_RUN){
@@ -345,6 +416,57 @@ void common_mem_special_free(Ptr64b* ptr){
     allocations[allocation_record_index].req_hugepage = false;
 }
 
+bool common_mem_special_protect(Ptr64b* addr, size_t length, bool permit_read, bool permit_write, bool permit_exec, uint64_t ext_protect){ // extras is to allow additional minor flags later without breaking API
+    int allocation_record_index = 0;
+    for (; allocation_record_index < MAX_ALLOCATIONS_PER_RUN; allocation_record_index++){
+        if (allocations[allocation_record_index].ptr == addr) break;
+    }
+    if (allocation_record_index == MAX_ALLOCATIONS_PER_RUN){
+        fprintf(stderr, "Allocation Record not found, can not free!\n");
+        return false;
+    }
+    #if IS_WINDOWS(ENVTYPE)
+    if (allocations[allocation_record_index].type != ALLOC_TYPE_WIN_VIRTUAL_ALLOC &&
+        allocations[allocation_record_index].type != ALLOC_TYPE_WIN_VIRTUAL_EX_ALLOC &&
+        allocations[allocation_record_index].type != ALLOC_TYPE_WIN_VIRTUAL_ALLOC_2 ) {
+        fprintf(stderr, "Allocation Record is of type that can't be protected!\n");
+        return false;
+    }
+
+    DWORD protectType = PAGE_READWRITE;
+    DWORD oldProtect;
+    if      ( (permit_read) &&  (permit_write) &&  (permit_exec))  { protectType = PAGE_EXECUTE_READWRITE; }
+    else if ( (permit_read) &&  (permit_write) && !(permit_exec))  { protectType = PAGE_READWRITE; }
+    else if ( (permit_read) && !(permit_write) &&  (permit_exec))  { protectType = PAGE_EXECUTE_READ; }
+    else if ( (permit_read) && !(permit_write) && !(permit_exec))  { protectType = PAGE_READONLY; }
+    else {
+        fprintf(stderr, "Unimplemented PROTECT type\n");
+        return NULL;
+    }
+    if (VirtualProtect(addr, length, protectType, &oldProtect) == 0){
+        fprintf(stderr, "Failed to protect memory via VirtualProtect: %d\n", GetLastError());
+        return false;
+    }
+    return true;
+    #elif IS_GCC_POSIX(ENVTYPE)
+    if (allocations[allocation_record_index].type != ALLOC_TYPE_MMAP ) {
+        fprintf(stderr, "Allocation Record is of type that can't be protected!\n");
+        return NULL;
+    }
+
+    int protect_bitfield = 0;
+    protect_bitfield |= (permit_read)? PROT_READ:0;
+    protect_bitfield |= (permit_write)? PROT_WRITE:0;
+    protect_bitfield |= (permit_exec)? PROT_EXEC:0;
+
+    if (mprotect((void *)addr, length, protect_bitfield) < 0) {
+        fprintf(stderr, "mprotect failed, errno %d\n", errno);
+        return false;
+    }
+    return true;
+    #endif
+}
+
 Ptr64b* common_mem_numa_move_mem_node(Ptr64b* ptr, int target_numa_memory_node){
 #ifdef NUMA
     if (target_numa_memory_node < 0 || target_numa_memory_node >= MAX_NUMA_NODES) {
@@ -352,7 +474,7 @@ Ptr64b* common_mem_numa_move_mem_node(Ptr64b* ptr, int target_numa_memory_node){
         return NULL;
     }
     int allocation_record_index = 0;
-    for (; allocation_record_index < MAX_ALLOCATIONS_PER_RUN; allocation_record_index){
+    for (; allocation_record_index < MAX_ALLOCATIONS_PER_RUN; allocation_record_index++){
         if (allocations[allocation_record_index].ptr == ptr) break;
     }
     if (allocation_record_index == MAX_ALLOCATIONS_PER_RUN){

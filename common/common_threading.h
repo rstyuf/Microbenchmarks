@@ -81,7 +81,8 @@ DWORD WINAPI ThreadFunctionRunner(LPVOID param) {
 #elif IS_GCC_POSIX(ENVTYPE)
 void* ThreadFunctionRunner(void* param){
     TimeThreadData *arg_holder = (TimeThreadData *)param;
-    common_threading_set_affinity(arg_holder->processorIdx);
+    if (arg_holder->processorIdx < 0)
+        common_threading_set_affinity(arg_holder->processorIdx);
     //fprintf(stderr, "thread %ld set affinity %d\n", gettid(), arg_holder->processorIdx);
     #if IS_GCC(ENVTYPE) && (defined(NEW_PT_TIMETHREADS))    
     pthread_barrier_wait(arg_holder->barrier);
@@ -118,7 +119,8 @@ TimerResult TimeThreads( TimeThreadData* thread_datas,
             timer_result.result = -1;
             return timer_result;
         }
-        SetThreadAffinityMask(testThreads[i], 1ULL << (uint64_t)thread_datas[i].processorIdx);
+        if(((uint64_t)thread_datas[i].processorIdx) < 0 ) // negative numbers means???
+            SetThreadAffinityMask(testThreads[i], 1ULL << (uint64_t)thread_datas[i].processorIdx);
     }
 
     common_timer_start(timer);
@@ -221,4 +223,4 @@ TimerResult TimeThreads(unsigned int processor1,
 
 
 
-#endif
+#endif /*COMMON_THREADING_H*/ 

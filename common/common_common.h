@@ -153,6 +153,7 @@
 #include "common_threading.h"
 #include "common_memory.h"
 #include "common_datalogger.h"
+#include "common_misc.h"
 
 #endif
 
