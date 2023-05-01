@@ -189,7 +189,7 @@ int main(int argc, char* argv[]) {
             maxTestSizeKb = maxTestSizeKb > maxTestSizeMb*1024 ? maxTestSizeMb*1024 : maxTestSizeKb;
             singleSize = (singleSize && singleSize > maxTestSizeMb*1024) ? maxTestSizeMb*1024 : singleSize;
         }
-        hugePagesArr = (uint32_t* ) common_mem_malloc_special(maxTestSizeKb*1024, 0, true, COMMON_MEM_ALLOC_NUMA_DISABLED);
+        hugePagesArr = (uint32_t* ) common_mem_malloc_special(maxTestSizeKb*1024, 0, true, NULL);
         if (hugePagesArr == NULL) return -1;
     }
 

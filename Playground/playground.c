@@ -73,7 +73,7 @@ int main(int argc, char *argv[]) {
         timer.msr_tracker[1].addr = MSR_IA32_FIXED_CTR1;
 
     #endif
-    uint32_t * dataArr = (uint32_t* ) common_mem_malloc_special(56*1024, 0, false, COMMON_MEM_ALLOC_NUMA_DISABLED);
+    uint32_t * dataArr = (uint32_t* ) common_mem_malloc_special(56*1024, 0, false, NULL);
     if (dataArr == NULL) return -1;
 
     RunAllLatencyTestSizes(test_sizes, 6, dataArr, 0, 0, RunLatencyTest, &timer, &dlog);
