@@ -3,7 +3,10 @@
 //<includes>
 #include "common_common.h"
 #if (IS_GCC(ENVTYPE) && IS_ISA_X86(ENVTYPE))
+#ifndef WEIRDBUG_CPUID_H_DEFINED
 #include <cpuid.h>
+#define WEIRDBUG_CPUID_H_DEFINED
+#endif
 #elif IS_MSVC(ENVTYPE)
 #include <intrin.h>
 #include <immintrin.h>

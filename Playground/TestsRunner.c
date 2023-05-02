@@ -10,7 +10,7 @@
 #include "../common/alternative_implementations/commonalt_timer_withmsrs.h"
 #include "../MemoryLatency/MemoryLatency.c"
 #include "../CoherencyLatency/CoherencyLatency.cpp"
-//#include "../MemoryBandwidth/MemoryBandwidth.cpp"
+#include "../MemoryBandwidth/MemoryBandwidth.c"
 
 #define MAX_CORES (64)
 #define MAX_TEST_NAME_LEN (32)
@@ -45,6 +45,7 @@ enum TESTSUITE_BITS_e {
     TESTSUITE_BITS_MEMLAT_SLFT_REGPG,
     TESTSUITE_BITS_C2C_BOUNCE,
     TESTSUITE_BITS_C2C_OWNED,
+    TESTSUITE_BITS_MEMBW_AUTOTHREADS,
 };
 
 
@@ -187,7 +188,26 @@ int test_runner_main(bool msr_perf, int large_pg, struct core_run_conf_t* core_p
         #endif
         CoherencyTestMain(1, COHERENCYLAT_DEFAULT_ITERATIONS, RunCoherencyOwnedTest, &timer, &dlog);
     }
-    
+    int cpuCount = common_threading_get_num_cpu_cores();
+    MemBWFunc bw_func = asm_read;
+    _membw_get_default_runfunc(&bw_func);
+    if ((testsuite & (1 << TESTSUITE_BITS_MEMBW_AUTOTHREADS)) != 0){
+        printf("Running MemoryBW Autothreads Shared Array Test\n");
+        #if ALTERNATE_DATALOGGER == 1
+            common_datalogger_init_subtest(&dlog, DATA_LOGGER_LOG_TYPES_MEMBW, "MBW-Autothreads-shared");    
+            common_datalogger_swap_outfd(&dlog, "outfd_MBW-Autothreads-shared.csv", true);
+        #endif
+        RunMemoryBandwidthAutoThreadsTest(test_sizes, testSizeCount, cpuCount, default_gbToTransfer, /*sleepTime*/ 1,  /*shared*/ 1, /*nopBytes*/ 0, /*branchInterval*/0, 0, 0, NULL,  bw_func, NULL, &timer, &dlog);
+    }
+     if ((testsuite & (1 << TESTSUITE_BITS_MEMBW_AUTOTHREADS)) != 0){
+        printf("Running MemoryBW Autothreads Private Array Test\n");
+        #if ALTERNATE_DATALOGGER == 1
+            common_datalogger_init_subtest(&dlog, DATA_LOGGER_LOG_TYPES_MEMBW, "MBW-Autothreads-private");    
+            common_datalogger_swap_outfd(&dlog, "outfd_MBW-Autothreads-private.csv", true);
+        #endif
+        RunMemoryBandwidthAutoThreadsTest(test_sizes, testSizeCount, cpuCount, default_gbToTransfer, /*sleepTime*/ 1,  /*shared*/ 0, /*nopBytes*/ 0, /*branchInterval*/0, 0, 0, NULL,  bw_func, NULL, &timer, &dlog);
+    }
+
     printf("\nDone, Cleaning up\n");
     common_datalogger_close_all(&dlog);
     char* datalog_folder_path = common_datalogger_get_testset_folder_name(&dlog);

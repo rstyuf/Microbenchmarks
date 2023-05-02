@@ -27,7 +27,10 @@
 #if IS_MSVC(ENVTYPE)
 //#include <immintrin.h>
 #elif IS_GCC(ENVTYPE)
+#ifndef WEIRDBUG_CPUID_H_DEFINED
 #include <cpuid.h>
+#define WEIRDBUG_CPUID_H_DEFINED
+#endif
 #endif
 
 #include <stdint.h>

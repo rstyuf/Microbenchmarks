@@ -110,6 +110,27 @@ void RunMemoryBandwidthTest(int* mem_bw_test_sizes, int testSizeCount, int threa
                             int shared, int nopBytes, int branchInterval, int core_node, int mem_node, int* specific_cores,  MemBWFunc bw_func, 
                             TimerResult *results, TimerStructure* timer, DataLog* dlog);
 
+CMISC_CPU_FEATURES _membw_get_default_runfunc(MemBWFunc* bw_func){
+ CMISC_CPU_FEATURES cpuf = common_misc_cpu_features_get();
+    *bw_func = asm_read;
+    // Setting default bw_func
+    #if IS_ISA_X86_64(ENVTYPE)
+    // if no method is specified, we'll do default. 
+    // How do we choose default? We attempt to pick the best one for x86
+    // for aarch64 we'll just use NEON because SVE basically doesn't exist
+    *bw_func = scalar_read;
+    if (COMMON_MISC_CHECK_CPU_FEATURE(cpuf, COMMON_MISC_CPU_FEATURE_SSE)) {
+        *bw_func = sse_read;
+    }
+    if (COMMON_MISC_CHECK_CPU_FEATURE(cpuf, COMMON_MISC_CPU_FEATURE_AVX1)) {
+        *bw_func = asm_read;
+    }
+    if (COMMON_MISC_CHECK_CPU_FEATURE(cpuf, COMMON_MISC_CPU_FEATURE_AVX512_legacytest)) {
+        *bw_func = avx512_read;
+    }
+    #endif /* IS_ISA_X86_64(ENVTYPE)*/
+    return cpuf;
+}
 
 #if COMPOUND_TEST
 // We don't want the main in this case
@@ -129,24 +150,9 @@ int main(int argc, char *argv[]) {
     int numa_mode = default_numa_mode;
     TimerStructure timer;
     DataLog dlog;
-    CMISC_CPU_FEATURES cpuf = common_misc_cpu_features_get();
     MemBWFunc bw_func = asm_read;
-    // Setting default bw_func
-    #if IS_ISA_X86_64(ENVTYPE)
-    // if no method is specified, we'll do default. 
-    // How do we choose default? We attempt to pick the best one for x86
-    // for aarch64 we'll just use NEON because SVE basically doesn't exist
-    bw_func = scalar_read;
-    if (COMMON_MISC_CHECK_CPU_FEATURE(cpuf, COMMON_MISC_CPU_FEATURE_SSE)) {
-        bw_func = sse_read;
-    }
-    if (COMMON_MISC_CHECK_CPU_FEATURE(cpuf, COMMON_MISC_CPU_FEATURE_AVX1)) {
-        bw_func = asm_read;
-    }
-    if (COMMON_MISC_CHECK_CPU_FEATURE(cpuf, COMMON_MISC_CPU_FEATURE_AVX512_legacytest)) {
-        bw_func = avx512_read;
-    }
-    #endif /* IS_ISA_X86_64(ENVTYPE)*/
+    CMISC_CPU_FEATURES cpuf = _membw_get_default_runfunc(&bw_func);
+
 
 
     for (int argIdx = 1; argIdx < argc; argIdx++) {
