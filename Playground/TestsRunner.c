@@ -45,7 +45,8 @@ enum TESTSUITE_BITS_e {
     TESTSUITE_BITS_MEMLAT_SLFT_REGPG,
     TESTSUITE_BITS_C2C_BOUNCE,
     TESTSUITE_BITS_C2C_OWNED,
-    TESTSUITE_BITS_MEMBW_AUTOTHREADS,
+    TESTSUITE_BITS_MEMBW_AUTOTHREADS_SHARED,
+    TESTSUITE_BITS_MEMBW_AUTOTHREADS_PRIVATE,
 };
 
 
@@ -191,7 +192,7 @@ int test_runner_main(bool msr_perf, int large_pg, struct core_run_conf_t* core_p
     int cpuCount = common_threading_get_num_cpu_cores();
     MemBWFunc bw_func = asm_read;
     _membw_get_default_runfunc(&bw_func);
-    if ((testsuite & (1 << TESTSUITE_BITS_MEMBW_AUTOTHREADS)) != 0){
+    if ((testsuite & (1 << TESTSUITE_BITS_MEMBW_AUTOTHREADS_SHARED)) != 0){
         printf("Running MemoryBW Autothreads Shared Array Test\n");
         #if ALTERNATE_DATALOGGER == 1
             common_datalogger_init_subtest(&dlog, DATA_LOGGER_LOG_TYPES_MEMBW, "MBW-Autothreads-shared");    
@@ -199,7 +200,7 @@ int test_runner_main(bool msr_perf, int large_pg, struct core_run_conf_t* core_p
         #endif
         RunMemoryBandwidthAutoThreadsTest(test_sizes, testSizeCount, cpuCount, default_gbToTransfer, /*sleepTime*/ 1,  /*shared*/ 1, /*nopBytes*/ 0, /*branchInterval*/0, 0, 0, NULL,  bw_func, NULL, &timer, &dlog);
     }
-     if ((testsuite & (1 << TESTSUITE_BITS_MEMBW_AUTOTHREADS)) != 0){
+     if ((testsuite & (1 << TESTSUITE_BITS_MEMBW_AUTOTHREADS_PRIVATE)) != 0){
         printf("Running MemoryBW Autothreads Private Array Test\n");
         #if ALTERNATE_DATALOGGER == 1
             common_datalogger_init_subtest(&dlog, DATA_LOGGER_LOG_TYPES_MEMBW, "MBW-Autothreads-private");    
@@ -241,6 +242,8 @@ int main(int argc, char *argv[]) {
     testsuite_full = testsuite_full | (1 << TESTSUITE_BITS_MEMLAT_SLFT_REGPG); 
     testsuite_full = testsuite_full | (1 << TESTSUITE_BITS_C2C_BOUNCE); 
     testsuite_full = testsuite_full | (1 << TESTSUITE_BITS_C2C_OWNED); 
+    testsuite_full = testsuite_full | (1 << TESTSUITE_BITS_MEMBW_AUTOTHREADS_SHARED); 
+    testsuite_full = testsuite_full | (1 << TESTSUITE_BITS_MEMBW_AUTOTHREADS_PRIVATE); 
 
     testsuite_mid = testsuite_mid | (1 << TESTSUITE_BITS_MEMLAT_C_HUGEPG); 
     //testsuite_mid = testsuite_mid | (1 << TESTSUITE_BITS_MEMLAT_C_REGPG); 
@@ -252,6 +255,8 @@ int main(int argc, char *argv[]) {
     //testsuite_mid = testsuite_mid | (1 << TESTSUITE_BITS_MEMLAT_SLFT_REGPG); 
     testsuite_mid = testsuite_mid | (1 << TESTSUITE_BITS_C2C_BOUNCE); 
     testsuite_mid = testsuite_mid | (1 << TESTSUITE_BITS_C2C_OWNED); 
+    testsuite_mid = testsuite_mid | (1 << TESTSUITE_BITS_MEMBW_AUTOTHREADS_SHARED); 
+    //testsuite_mid = testsuite_mid | (1 << TESTSUITE_BITS_MEMBW_AUTOTHREADS_PRIVATE);
 
     testsuite_min = testsuite_min | (1 << TESTSUITE_BITS_MEMLAT_C_HUGEPG); 
     //testsuite_min = testsuite_min | (1 << TESTSUITE_BITS_MEMLAT_C_REGPG); 
@@ -263,7 +268,8 @@ int main(int argc, char *argv[]) {
     //testsuite_min = testsuite_min | (1 << TESTSUITE_BITS_MEMLAT_SLFT_REGPG); 
     testsuite_min = testsuite_min | (1 << TESTSUITE_BITS_C2C_BOUNCE); 
     testsuite_min = testsuite_min | (1 << TESTSUITE_BITS_C2C_OWNED); 
-
+    //testsuite_min = testsuite_min | (1 << TESTSUITE_BITS_MEMBW_AUTOTHREADS_SHARED); 
+    //testsuite_min = testsuite_min | (1 << TESTSUITE_BITS_MEMBW_AUTOTHREADS_PRIVATE);
 
     testsuite = testsuite_full;
 
