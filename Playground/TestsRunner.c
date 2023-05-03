@@ -114,9 +114,11 @@ int SingleThreadedTest(TimerStructure* timer, DataLog* dlog, int* test_sizes, in
 
 
 int test_runner_main(bool msr_perf, int large_pg, struct core_run_conf_t* core_profiles, uint64_t testsuite, int max_run_sizes_mb, char* testname){
-    MsrDescriptor msrd = common_msr_open();
-    intel_arch_msrs_enable_uncore_global_fixed_cntrs(msrd);
-
+    MsrDescriptor msrd;
+    if (msr_perf){
+        msrd = common_msr_open();
+        intel_arch_msrs_enable_uncore_global_fixed_cntrs(msrd);
+    }
     TimerStructure timer;
     DataLog dlog = {0};
     /// 
@@ -126,6 +128,7 @@ int test_runner_main(bool msr_perf, int large_pg, struct core_run_conf_t* core_p
     #endif
     ///
     #if ALTERNATE_TIMER_MSRS > 2
+    if (msr_perf) {
         timer.msrd = msrd;
         timer.msr_tracker[0].usage_type = 1;
         timer.msr_tracker[0].value_fieldsize_bits = 44;
@@ -135,7 +138,9 @@ int test_runner_main(bool msr_perf, int large_pg, struct core_run_conf_t* core_p
         timer.msr_tracker[1].value_fieldsize_bits = 44;
         timer.msr_tracker[1].specific_core = 0-1;
         timer.msr_tracker[1].addr = MSR_IA32_FIXED_CTR1;
-
+    } else {
+        timer.msrd.valid = false;
+    }
     #endif
     int* test_sizes = my_default_test_sizes;
     uint32_t testSizeCount = sizeof(my_default_test_sizes) / sizeof(int);
@@ -167,12 +172,14 @@ int test_runner_main(bool msr_perf, int large_pg, struct core_run_conf_t* core_p
         common_threading_set_affinity(core_profiles[cpid].core_id);
         common_datalogger_set_predef(&dlog, core_profiles[cpid].core_id, 1);
         printf("\nRunning core %d tests:\n", core_profiles[cpid].core_id);
-        intel_arch_msrs_enable_core_global_fixed_cntrs(msrd); // TODO: How to handle migration?
+        if (msr_perf)
+            intel_arch_msrs_enable_core_global_fixed_cntrs(msrd); // TODO: How to handle migration?
         SingleThreadedTest(&timer, &dlog, test_sizes, testSizeCount, max_run_sizes_mb, dataArr, (testsuite & core_profiles[cpid].testsuite));
     }
     common_threading_set_affinity(core_profiles[0].core_id);
     common_datalogger_set_predef(&dlog, core_profiles[0].core_id, 1);
-    intel_arch_msrs_enable_core_global_fixed_cntrs(msrd); // TODO: How to handle migration?
+    if (msr_perf)
+        intel_arch_msrs_enable_core_global_fixed_cntrs(msrd); // TODO: How to handle migration?
     if ((testsuite & (1 << TESTSUITE_BITS_C2C_BOUNCE)) != 0){
         printf("Running C2C Bounce Test\n");
         #if ALTERNATE_DATALOGGER == 1
@@ -212,7 +219,8 @@ int test_runner_main(bool msr_perf, int large_pg, struct core_run_conf_t* core_p
     printf("\nDone, Cleaning up\n");
     common_datalogger_close_all(&dlog);
     char* datalog_folder_path = common_datalogger_get_testset_folder_name(&dlog);
-    common_msr_close(msrd);
+    if (msr_perf) 
+        common_msr_close(msrd);
     common_mem_special_free((Ptr64b*)dataArr);
     char compress_cmd_string[256] = {0};
     snprintf(compress_cmd_string, 255, "tar -cf  %s.zip %s", datalog_folder_path, datalog_folder_path);

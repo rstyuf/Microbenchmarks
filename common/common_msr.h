@@ -319,6 +319,7 @@ typedef struct msr_value_tracker_t{
 } MsrValueTrack;
 
 inline uint64_t common_msr_get_update_delta(MsrDescriptor msrd, MsrValueTrack* tracker){
+    if (msrd.valid == false) return -1;
     if (tracker->usage_type == 1){ //read:
         uint64_t newval = common_msr_read(msrd, tracker->addr);
         //printf("ReadMsr: Addr %x got %lld   (oldval %lld) diff: %lld       (0x%llx)\n", tracker->addr, newval, tracker->last_value, newval-tracker->last_value, newval-tracker->last_value);

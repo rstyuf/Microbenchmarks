@@ -7,9 +7,9 @@
 #include <stdint.h>
 #include <string.h>
 
-#ifndef __MINGW32__
-#include <sys/syscall.h>
-#endif
+//#ifndef __MINGW32__
+//#include <sys/syscall.h>
+//#endif
 
 #include <math.h>
 //#include <sys/mman.h>
